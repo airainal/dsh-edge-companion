@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH Edge Bridge",
+    "description": "Starts the local bridge that lets the Edge extension drive your real browser and mirrors DSH sessions in the Edge side panel."
+  }
+}

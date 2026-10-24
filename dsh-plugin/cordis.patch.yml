@@ -1,0 +1,5 @@
+# Starts the DSH Edge Bridge together with DeepSeek Harness, so the Edge extension
+# can connect without any launcher, protocol handler or manual start.
+- insert:
+    - id: dsh-edge-bridge
+      name: '@local/dsh-edge-bridge'

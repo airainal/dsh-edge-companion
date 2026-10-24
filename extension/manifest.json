@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "DSH Edge Bridge",
+  "version": "1.2.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0MmS5KLOrodBfoyV43fqobNTr0oLix4I14MbpCAhEzxz0cyksFlgkZXVOgES1NNB0EHHsyCSkGvAq/7z9vfXPICR+Lj5w/HHyB8xBuUz5HHjkxRilwxvTtRN5KBQlfKlAEAjokTDrWqARy1JiicCXGhDKrtJiSkZ+i0OTmS4o+UMX+R+usyWAOJfr8vgDOZXVFpB5nSsQyB8yI1nPtN8ttOk+EswT2mr6vjqG9DzN5LCOFwQA4RTZNHF42fyMEmMaW4YNKAGAeSVnsGpKy81ni/Z8jD/UDBRpRgzHFPvsRDDI9c6mRwSmKMjJGY4TVlgqwL/eDoZUjA0BhcsCGJ/CwIDAQAB",
+  "description": "通过本地桥接把你的 Edge 标签页以 CDP 方式开放给 DeepSeek Harness（DSH）驱动：保留登录态、无需重启浏览器、无需 --remote-debugging-port。",
+  "minimum_chrome_version": "114",
+  "permissions": ["debugger", "tabs", "storage", "alarms", "sidePanel"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "DSH Edge Bridge（点击打开侧边栏）",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html"
+}

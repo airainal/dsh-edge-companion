@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH Edge Bridge",
+    "description": "随 DeepSeek Harness 启动本地桥接，让 Edge 扩展能驱动你的真实浏览器，并在侧边栏同步 DSH 会话。"
+  }
+}

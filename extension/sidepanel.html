@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header>
+    <div class="seg">
+      <button id="view-chat" class="seg-btn active">会话</button>
+      <button id="view-tabs" class="seg-btn">标签页</button>
+    </div>
+    <div class="brand">
+      <span id="engine" class="engine hidden"></span>
+      <span class="dot" id="dot">●</span>
+      <button id="btn-settings" class="ghost" title="设置">⚙</button>
+    </div>
+  </header>
+
+  <div id="views" class="views">
+    <div class="views-track" id="views-track">
+    <!-- 会话镜像视图：DSH 的思考 / 工具调用 / 回复实时投射；会话与 DSH 双向同步 -->
+    <section id="chat-view" class="view">
+      <div id="banner" class="banner hidden"></div>
+
+      <div class="session-bar">
+        <div class="dd" id="session-dd">
+          <button class="dd-btn" id="session-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span class="dd-label" id="session-label">＋ 新会话</span>
+            <svg class="dd-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.4 8 10.4l4-4" /></svg>
+          </button>
+          <div class="dd-menu" id="session-menu" role="listbox"></div>
+        </div>
+        <button id="btn-new-session" class="icon-btn" type="button" title="新建会话" aria-label="新建会话">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.4v9.2M3.4 8h9.2" /></svg>
+        </button>
+      </div>
+
+      <div id="chat" class="chat"></div>
+
+      <div class="composer">
+        <div class="model-bar">
+          <span class="model-label">模型</span>
+          <div class="dd dd-up" id="model-dd">
+            <button class="dd-btn dd-btn-sm" id="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="dd-label" id="model-label">模型</span>
+              <svg class="dd-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.4 8 10.4l4-4" /></svg>
+            </button>
+            <div class="dd-menu" id="model-menu" role="listbox"></div>
+          </div>
+          <span id="session-hint" class="session-hint"></span>
+        </div>
+        <div id="pending" class="pending hidden">⏳ 待 DSH 领取…</div>
+        <div class="input-pill">
+          <textarea id="input" rows="1" placeholder="询问DeepSeek Harness"></textarea>
+          <button id="btn-send" type="button" title="发送" aria-label="发送">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" /></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 标签页视图 -->
+    <section id="tabs-view" class="view">
+      <div class="tabs-head">当前标签页 <button id="btn-refresh" class="ghost" title="刷新">↻</button></div>
+      <ul id="tab-list"></ul>
+    </section>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

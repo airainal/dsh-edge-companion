@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F7F9FF"/><stop offset="1" stop-color="#EDF1FF"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#4D6BFE"/></marker>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8A94A8"/></marker>
+  </defs>
+  <rect width="1280" height="420" rx="24" fill="url(#bg)"/>
+  <text x="64" y="64" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="26" font-weight="700" fill="#1B2340">DSH Edge Bridge · 三层架构</text>
+  <text x="64" y="94" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#6B7490">扩展只是「手」，桥接只是「服务」，大脑永远在 DSH</text>
+
+  <!-- Edge extension -->
+  <rect x="64" y="140" width="280" height="180" rx="18" fill="#FFFFFF" stroke="#D8DFF5"/>
+  <rect x="64" y="140" width="280" height="44" rx="18" fill="#4D6BFE"/>
+  <rect x="64" y="166" width="280" height="18" fill="#4D6BFE"/>
+  <text x="86" y="170" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">Edge MV3 扩展</text>
+  <text x="86" y="218" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">chrome.debugger → CDP</text>
+  <text x="86" y="248" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">侧边栏 = 会话镜像</text>
+  <text x="86" y="278" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">带登录态的真实浏览器</text>
+  <text x="86" y="306" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="13" fill="#8A94A8">手</text>
+
+  <!-- Bridge -->
+  <rect x="500" y="140" width="280" height="180" rx="18" fill="#FFFFFF" stroke="#D8DFF5"/>
+  <rect x="500" y="140" width="280" height="44" rx="18" fill="#16224A"/>
+  <rect x="500" y="166" width="280" height="18" fill="#16224A"/>
+  <text x="522" y="170" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">桥接 bridge.mjs</text>
+  <text x="522" y="218" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">零依赖 HTTP + WS</text>
+  <text x="522" y="248" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">标签页 / 快照 / 填表 / 截图</text>
+  <text x="522" y="278" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">会话日志镜像 · 无模型调用</text>
+  <text x="522" y="306" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="13" fill="#8A94A8">服务（仅 127.0.0.1）</text>
+
+  <!-- DSH -->
+  <rect x="936" y="140" width="280" height="180" rx="18" fill="#FFFFFF" stroke="#D8DFF5"/>
+  <rect x="936" y="140" width="280" height="44" rx="18" fill="#4D6BFE"/>
+  <rect x="936" y="166" width="280" height="18" fill="#4D6BFE"/>
+  <text x="958" y="170" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">DeepSeek Harness</text>
+  <text x="958" y="218" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">dsh --profile headless --json</text>
+  <text x="958" y="248" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">思考 / 工具 / 回复</text>
+  <text x="958" y="278" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="15" fill="#2A3352">真实会话，可与桌面版接力</text>
+  <text x="958" y="306" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="13" fill="#8A94A8">大脑</text>
+
+  <!-- arrows -->
+  <line x1="344" y1="230" x2="492" y2="230" stroke="#4D6BFE" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="356" y="214" font-family="Consolas, monospace" font-size="12" fill="#4D6BFE">WS 出站 :8766</text>
+  <line x1="780" y1="230" x2="928" y2="230" stroke="#4D6BFE" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="792" y="214" font-family="Consolas, monospace" font-size="12" fill="#4D6BFE">HTTP / JSON</text>
+
+  <!-- plugin -->
+  <rect x="936" y="352" width="280" height="44" rx="12" fill="#EEF2FF" stroke="#C9D4FF"/>
+  <text x="958" y="380" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="14" fill="#3A4A7A">DSH 插件：启动时自动拉起桥接</text>
+  <path d="M1076 352 C1076 330 1076 330 1076 312" stroke="#8A94A8" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#arrow2)"/>
+</svg>

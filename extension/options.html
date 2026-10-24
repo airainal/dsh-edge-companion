@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>DSH Edge Bridge 设置</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0; padding: 28px;
+      background: #f6f7fb; color: #1f2328;
+      font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    h1 { font-size: 18px; margin: 0 0 18px; }
+    .field { margin-bottom: 16px; max-width: 520px; }
+    label { display: block; color: #6b7280; font-size: 12.5px; margin-bottom: 4px; }
+    input {
+      width: 100%; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid #e4e7ee; background: #fff; color: #1f2328;
+      font: 13px Consolas, monospace;
+    }
+    input:focus { outline: 2px solid #eaefff; border-color: #4d6bfe; }
+    button {
+      border: 0; border-radius: 8px; padding: 8px 18px;
+      background: #4d6bfe; color: #fff; cursor: pointer; font-size: 13px;
+    }
+    button:hover { filter: brightness(1.06); }
+    #state { margin-left: 12px; font-size: 13px; }
+    #state.on { color: #16a34a; }
+    #state.off { color: #dc2626; }
+    .hint { color: #6b7280; font-size: 12px; max-width: 560px; }
+    code { background: #eef1f6; border-radius: 4px; padding: 1px 5px; font: 12px Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>DSH Edge Bridge 设置</h1>
+
+  <div class="field">
+    <label for="url">桥接 WebSocket 地址</label>
+    <input id="url" placeholder="ws://127.0.0.1:8766/ws" />
+  </div>
+
+  <div class="field">
+    <label for="token">访问令牌（可选；桥接以 --token=XXX 启动时必填）</label>
+    <input id="token" placeholder="留空表示不使用令牌" />
+  </div>
+
+  <button id="save">保存并重连</button>
+  <span id="state">…</span>
+
+  <p class="hint">
+    保存后扩展会立即按新配置重连。若桥接未启动，扩展会每 1–30 秒自动重试，无需手动刷新。
+    启动桥接：双击 <code>bridge\start-bridge.cmd</code>（保持窗口开着）。
+  </p>
+  <p class="hint">
+    提示：使用 CDP 期间页面顶部会出现「扩展正在调试此浏览器」横幅，属正常现象——这说明
+    DeepSeek Harness 正在通过 <code>chrome.debugger</code> 操作该标签页。
+  </p>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Build output / release assets
+dist/
+*.zip
+
+# Bridge runtime files (generated on first start)
+bridge/bridge.log*
+bridge/node-path.txt
+bridge/active-session.json
+bridge/session-log.jsonl
+bridge/.dsh-overlay.yml
+bridge/worker-state.json
+
+# Test artifacts
+test/edge-profile*/
+test/hl-*/
+test/headless-prof/
+test/p-*.png
+test/sidepanel-preview.html
+test/dup-*.log
+
+# Tooling / OS
+node_modules/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

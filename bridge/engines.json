@@ -1,0 +1,23 @@
+{
+  "mode": "dsh",
+  "dsh": {
+    "exe": "",
+    "profile": "headless",
+    "storeAuth": true,
+    "provider": "deepseek-account",
+    "model": "deepseek-flash",
+    "models": [
+      {
+        "id": "deepseek-flash",
+        "label": "DeepSeek-V4.1-Flash"
+      },
+      {
+        "id": "deepseek-v4-pro",
+        "label": "DeepSeek-V4-Pro"
+      }
+    ],
+    "timeoutMs": 1800000,
+    "cwd": "C:\\Users\\a\\Documents\\deepseek-harness\\default-workspace\\dsh-edge-companion",
+    "extraArgs": []
+  }
+}
