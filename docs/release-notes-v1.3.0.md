@@ -17,7 +17,7 @@
 3. DSH → Plugins → Add plugin → 粘贴 `dsh-plugin` 的绝对路径 → Install。
 4. 完成：打开 Edge 侧边栏即可使用。
 
-详细步骤见压缩包内的 `安装到新电脑.md` 与 `安装插件.md`。
+详细步骤见压缩包内的 `安装教程.docx`。
 
 ## 校验
 
