@@ -1,11 +1,12 @@
-# Build the portable zip (clean source only, no runtime files) plus SHA256SUMS.
+# Build the portable zip for end users: runtime folders + Word guide only.
+# Markdown docs stay in the repository but are not shipped in the zip.
 # Keep this file ASCII-only.
 #   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1 -Version 1.4.0
-param([string]$Version = '1.3.0')
+param([string]$Version = '1.3.0', [string]$OutDir = 'dist')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$dist = Join-Path $root 'dist'
+if ([System.IO.Path]::IsPathRooted($OutDir)) { $dist = $OutDir } else { $dist = Join-Path $root $OutDir }
 $stage = Join-Path $dist 'stage\dsh-edge-companion'
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
@@ -21,12 +22,12 @@ foreach ($f in @('bridge.mjs', 'engines.json', 'start-bridge.cmd', 'start-bridge
     Copy-Item (Join-Path $root (Join-Path 'bridge' $f)) (Join-Path $stage (Join-Path 'bridge' $f)) -Force
 }
 
-# docs images are referenced by README.md
-Copy-Item (Join-Path $root 'docs') (Join-Path $stage 'docs') -Recurse -Force
-
-# root markdown guides + license
-Get-ChildItem $root -Filter '*.md' -File | ForEach-Object { Copy-Item $_.FullName $stage -Force }
+# Only the Word installation guide is shipped with the package.
+Get-ChildItem $root -Filter '*.docx' -File | ForEach-Object { Copy-Item $_.FullName $stage -Force }
 if (Test-Path (Join-Path $root 'LICENSE')) { Copy-Item (Join-Path $root 'LICENSE') $stage -Force }
+
+# Markdown is repository documentation only.
+Get-ChildItem $stage -Recurse -Filter '*.md' -File | Remove-Item -Force
 
 $zip = Join-Path $dist ("dsh-edge-companion-{0}.zip" -f $Version)
 if (Test-Path $zip) { Remove-Item $zip -Force }
