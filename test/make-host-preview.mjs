@@ -3,8 +3,8 @@ import path from "node:path";
 
 const root = path.resolve(process.argv[2] || ".");
 const html = fs.readFileSync(path.join(root, "extension", "sidepanel.html"), "utf8");
-const css = fs.readFileSync(path.join(root, "extension", "sidepanel.css"), "utf8");
-const js = fs.readFileSync(path.join(root, "extension", "sidepanel.js"), "utf8");
+const css = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.1.css"), "utf8");
+const js = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.1.js"), "utf8");
 const body = html.match(/<body>([\s\S]*?)<\/body>/)[1].replace(/<script[\s\S]*?<\/script>/g, "");
 
 const mk = (text) => ({ text, chunks: text.match(/.{1,6}/gs) || [text] });
@@ -50,6 +50,7 @@ const stub = `<script>
   window.addEventListener("error", (e) => window.__errs.push(String(e.message || e)));
   const fakePort = {
     onMessage: { addListener(fn) { listeners.push(fn); listenerCount = listeners.length; window.__listenerCount = listenerCount; } },
+    onDisconnect: { addListener() {} },
     postMessage(msg) {
       switch (msg.type) {
         case "loadEvents": setTimeout(() => dispatch({ type: "events", events: [], now: 0 }), 5); break;

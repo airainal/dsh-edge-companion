@@ -7,7 +7,7 @@
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D4.svg">
   <img alt="Edge 114+" src="https://img.shields.io/badge/Edge-114%2B-4D6BFE.svg">
   <img alt="DeepSeek Harness" src="https://img.shields.io/badge/DeepSeek%20Harness-plugin-6C5CE7.svg">
-  <img alt="Release" src="https://img.shields.io/badge/release-v1.3.0-22C55E.svg">
+  <img alt="Release" src="https://img.shields.io/badge/release-v1.4.1-22C55E.svg">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   不用重启浏览器，不用 <code>--remote-debugging-port</code>，侧边栏就是 DSH 的会话镜像。
 </p>
 
-<p align="center"><i>Releases 里的 <code>dsh-edge-companion-1.4.0.zip</code> 是可直接分发的一键包，安装教程也在包里。</i></p>
+<p align="center"><i>Releases 里的 <code>dsh-edge-companion-1.4.1.zip</code> 是可直接分发的一键包，安装教程也在包里。</i></p>
 
 ---
 
@@ -79,10 +79,10 @@
 
 ### 3. 侧边栏与会话：同一 Agent，不是新 Agent
 
-当 `dsh-agent-host` 插件在线时，桥接**不创建新 agent**，而是把侧边栏接到桌面端同一个 `Session Controller`：
+当 `dsh-plugin` 的宿主通道在线时，桥接**不创建新 agent**，而是把侧边栏接到桌面端同一个 `Session Controller`：
 
 ```
-Edge 侧边栏 ⇄ 桥接(8766) ⇄ WS 宿主通道 ⇄ dsh-agent-host（DSH 进程内）
+Edge 侧边栏 ⇄ 桥接(8766) ⇄ WS 宿主通道 ⇄ dsh-plugin 宿主通道（DSH 进程内）
                                               ├─ prompt：向当前会话提交普通用户消息
                                               ├─ follow：快照 + durable 事件 + assistant-stream 增量
                                               └─ cancel：与客户端停止按钮同一个 cancel
@@ -94,29 +94,28 @@ Edge 侧边栏 ⇄ 桥接(8766) ⇄ WS 宿主通道 ⇄ dsh-agent-host（DSH 进
 2. 对话、思考过程、工具调用通过 `follow` 的 `assistant-stream` **实时增量**推送，不再等 1 秒轮询；
 3. 侧边栏「停止」= 客户端同一个 `sessionController.cancel`，客户端与侧边栏同时结束；
 4. **Codex 模式、权限级别、模型、上下文完全一致**——因为就是同一个 Session/Agent；
-5. 侧边栏底部的 **Codex** 徽标显示客户端当前状态，点击可通过 `/codex-mode on|off` 双向切换（所有根会话同步）。
+5. 顶部引擎标签显示 **DSH · Codex**（仅同步客户端状态，不在插件里放切换按钮）。
 
-只有 `dsh-agent-host` **未安装/未连接**时，才回退到旧的 `dsh --profile headless` 路径：那是一个**独立的一次性 agent**，
+只有宿主通道**未连接**时，才回退到旧的 `dsh --profile headless` 路径：那是一个**独立的一次性 agent**，
 通过 `--session-id` 复用会话日志，因此只能秒级轮询、无法停止客户端会话，也没有 Codex 执行协议——这就是之前
 「插件里 Codex 不生效」以及「客户端不同步」的根因。
 
 > 同一个会话同一时间只在一端发指令；`ask_user_question` 这类需要客户端 UI 回答的问题，侧边栏会提示你回客户端回答。
 
-### 4. 随 DSH 自动启动（两个插件）
+### 4. 随 DSH 自动启动（单一插件）
 
-仓库附带两个 DSH 宿主插件：
+仓库只保留一个 DSH 宿主插件 **`dsh-plugin/`**（2.0.0）。它同时：
 
-- **`dsh-plugin/`**：DSH 启动时用自带 Node 隐藏启动 `..\bridge\bridge.mjs`（保证 DSH 开着桥接就在）；
-- **`dsh-agent-host/`**：在 DSH 进程内连接桥接，把侧边栏接到同一个 `sessionController`（实时、可停止、Codex 同状态）。
+- 用 DSH 自带 Node 隐藏启动 `..\bridge\bridge.mjs`；
+- 在 DSH 进程内连接桥接，把侧边栏接到同一个 `sessionController`（实时流、停止、Codex 同状态）。
 
 ```text
 DSH 启动 ──▶ dsh-plugin 拉起 bridge.mjs（127.0.0.1:8766）
-                     ▲
-Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-agent-host（同一 DSH 进程）
+                   ▲
+Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-plugin 宿主通道（同一 DSH 进程）
 ```
 
-两个都装好：**只要 DSH 开着，侧边栏就是客户端当前会话的实时遥控器**。
-只装 `dsh-plugin`：桥接可用，但会回退到独立 headless agent（旧行为）。
+**不创建第二个 agent**。
 
 ### 5. 安全边界
 
@@ -157,24 +156,23 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-agent-host（
 
 ### 第 1 步：加载 Edge 扩展
 
-1. 解压 `dsh-edge-companion-1.4.0.zip` 到任意目录（路径含空格/中文都可以，**保持目录完整**）；
+1. 解压 `dsh-edge-companion-1.4.1.zip` 到任意目录（路径含空格/中文都可以，**保持目录完整**）；
 2. Edge 地址栏打开 `edge://extensions`；
 3. 打开左下角 **「开发人员模式」**；
 4. 点 **「加载解压缩的扩展」**，选择解压出来的 `extension` 文件夹；
-5. 出现 **DSH Edge Bridge 1.3.0**（蓝发鲸鱼少女图标）即成功。
+5. 出现 **DSH Edge Bridge 1.3.1**（蓝发鲸鱼少女图标）即成功。
 
 > 扩展 ID 由 `manifest.json` 的 `key` 固定（`kioclakapkblemfnlgcfbciedfhkpmhc`），换路径/换机器都不变。
 
-### 第 2 步：安装两个 DSH 插件（推荐）
+### 第 2 步：安装 DSH 插件（推荐，只装一个）
 
 1. 打开 DSH → 左侧 **Plugins** → **Add plugin** → **Install a third-party plugin**；
-2. 先粘贴 **`dsh-plugin`** 的绝对路径安装（负责拉起桥接），例如 `D:\tools\dsh-edge-companion\dsh-plugin`；
-3. 再安装 **`dsh-agent-host`** 的绝对路径（负责把侧边栏接到客户端同一会话），例如
-   `D:\tools\dsh-edge-companion\dsh-agent-host`；
-4. 两次都点 **Install**（`link:` 安装，不联网）；如提示重启，重启一次 DSH。
+2. 粘贴 **`dsh-plugin`** 的绝对路径，例如 `D:\tools\dsh-edge-companion\dsh-plugin`；
+3. 点 **Install**（`link:` 安装，不联网）；如提示重启，重启一次 DSH。
 
-装好后：DSH 一启动桥接就在；侧边栏发指令会直接进入**客户端当前会话**，实时同步、可停止、Codex 状态一致。
-只装 `dsh-plugin` 也能用，但会回退到独立 headless agent（无实时流/无停止/无 Codex）。
+这个插件（2.0.0）同时做两件事：启动桥接 + 在 DSH 进程内把侧边栏接到客户端**同一个 Agent**。
+装好后侧边栏发指令会直接进入**客户端当前会话**，实时同步、可停止、Codex 状态随客户端。
+不再需要安装 `dsh-plugin 宿主通道`——它已合并进 `dsh-plugin`。
 
 > 细节与卸载方式见 [`安装插件.md`](安装插件.md)；插件以 `link:` 方式安装，**移动/删除文件夹会让插件失效**，移动后重装一次即可。
 
@@ -196,7 +194,7 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-agent-host（
 
 ### 更新与卸载
 
-- **更新扩展**：覆盖 `extension` 目录后在 `edge://extensions` 点刷新 ↻（旧版需刷新才会加载 1.3.0 的流式/停止/Codex UI）；
+- **更新扩展**：覆盖 `extension` 目录后在 `edge://extensions` 点刷新 ↻，然后**关闭并重新打开侧边栏**（旧页面不会热重载）；
 - **更新插件**：完全退出 DSH 再启动一次；`dsh-plugin` 会自动替换旧版本桥接；
   如仍提示宿主失效，先双击 `scripts\stop-bridge.vbs` 停桥接，再重启 DSH；
 - **卸载插件**：DSH → Plugins → 移除 **DSH Edge Bridge** 与 **DSH Agent Host**；
@@ -214,8 +212,8 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-agent-host（
 | 输入指令 | 例如「打开 bilibili.com 看看热门，挑三条告诉我」 |
 | 顶部会话下拉 | 选择真实 DSH 会话接力，或 `＋` 新建（客户端立即可见） |
 | 底部模型下拉 | DeepSeek-V4.1-Flash / DeepSeek-V4-Pro，下条指令生效 |
-| **停止按钮** | 输入框右侧红色方块，与客户端停止按钮是同一个 `cancel` |
-| **Codex 徽标** | 显示客户端当前 Codex 状态；点击可开关，所有根会话同步 |
+| **发送键变形** | 执行中同一个按钮变成红色停止方块，点它停止；结束后恢复向上箭头 |
+| **DSH · Codex** | 顶部标签只显示客户端 Codex 状态，不在插件里新增开关 |
 | 思考 / 工具折叠块 | 点击展开看完整参数与结果；执行中思考实时增量显示 |
 
 ### 在终端 / 脚本里
@@ -324,8 +322,7 @@ bin\edge.cmd shot 123 out.png
 dsh-edge-companion/
 ├── extension/          # Edge MV3 扩展（background / sidepanel / options）
 ├── bridge/             # 零依赖桥接：HTTP + WebSocket + DSH 引擎
-├── dsh-plugin/         # DSH 宿主插件：随 DSH 启动桥接
-├── dsh-agent-host/     # DSH 宿主插件：把侧边栏接到客户端同一 sessionController
+├── dsh-plugin/         # DSH 插件：随 DSH 启动桥接 + 接客户端同一会话
 ├── bin/                # edge.cmd / edge-cli.mjs（给 agent 用）
 ├── client/             # JS 会话封装
 ├── scripts/            # 协议注册 / 自检 / 打包 / 图标 / README 素材

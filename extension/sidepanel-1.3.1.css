@@ -339,27 +339,9 @@ textarea#input::placeholder { color: var(--dim-2); }
 #btn-send:hover { filter: brightness(1.06); }
 #btn-send:active { transform: scale(.94); }
 #btn-send:disabled { opacity: .35; cursor: default; box-shadow: none; }
-
-#btn-stop {
-  border: 1px solid #e3c4c4; border-radius: 50%; width: 30px; height: 30px; flex: 0 0 auto;
-  background: #fff1f1; color: #c0392b; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; padding: 0;
-  transition: background .15s ease, transform .12s ease, border-color .15s ease;
-}
-#btn-stop:hover { background: #ffe3e3; border-color: #d99393; }
-#btn-stop:active { transform: scale(.94); }
-#btn-stop.hidden { display: none; }
-#btn-stop svg { width: 14px; height: 14px; display: block; fill: currentColor; stroke: none; }
-
-.codex-chip {
-  flex: 0 0 auto; height: 22px; padding: 0 9px; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--card); color: var(--dim);
-  font: 11px/1 "Segoe UI", "Microsoft YaHei", sans-serif; cursor: pointer;
-  transition: background .15s ease, color .15s ease, border-color .15s ease;
-}
-.codex-chip:hover { border-color: #b9a8ff; color: var(--fg); }
-.codex-chip.on { background: #ede8ff; border-color: #c9b8ff; color: #5b3fd1; font-weight: 600; }
-.codex-chip.hidden { display: none; }
+#btn-send.stop { background: #ef4444; box-shadow: 0 4px 12px rgba(239, 68, 68, .28); }
+#btn-send.stop:hover { background: #e33b3b; }
+#btn-send.stop svg { width: 14px; height: 14px; fill: #fff; stroke: none; }
 
 /* ---- 标签页视图 ---- */
 .tabs-head {

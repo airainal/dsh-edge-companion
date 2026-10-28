@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { startAgentHost } from "./agent-host.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.DSHEDGE_PORT || 8766);
@@ -36,7 +37,7 @@ function findNode() {
   return { exe: process.execPath, electron: true };
 }
 
-const BRIDGE_VERSION = "1.2.0";
+const BRIDGE_VERSION = "1.2.1";
 
 async function stopOutdatedBridge() {
   try {
@@ -87,6 +88,16 @@ async function startBridge() {
   }
 }
 
-export function apply() {
+export const inject = [
+  "sessionController",
+  "agentPresets",
+  "permissionPresets",
+  "workingDirectory",
+];
+
+export function apply(ctx) {
   startBridge().catch((e) => console.warn("[dsh-edge-bridge] start failed:", e && e.message ? e.message : String(e)));
+  // Same bundle also gives the side panel a live channel into the desktop
+  // Session Controller (same Agent, not a second headless agent).
+  startAgentHost(ctx);
 }

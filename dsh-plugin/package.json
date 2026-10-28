@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-edge-bridge",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Starts the DSH Edge Bridge (the local companion service for the Edge extension) together with DeepSeek Harness.",
+  "description": "Starts the DSH Edge Bridge and connects the Edge side panel to the desktop Session Controller (same Agent, live stream, stop, Codex state).",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",
@@ -11,6 +11,7 @@
   },
   "files": [
     "index.js",
+    "agent-host.js",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.png",

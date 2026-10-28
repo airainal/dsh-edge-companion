@@ -85,15 +85,6 @@ chrome.runtime.onConnect.addListener((port) => {
         port.postMessage({ type: "sayError", error: "停止失败：" + String((e && e.message) || e) });
       }
     }
-    if (m.type === "codexToggle") {
-      try {
-        const r = await bridgeCall("sessionCodex", { enabled: !!m.enabled }, 25000);
-        port.postMessage({ type: "sayOk", ...r });
-        pushEngineToPort(port);
-      } catch (e) {
-        port.postMessage({ type: "sayError", error: "切换 Codex 失败：" + String((e && e.message) || e) });
-      }
-    }
     if (m.type === "loadEvents") {
       try {
         const r = await bridgeCall("sessionEvents", { since: Number(m.since || 0) });

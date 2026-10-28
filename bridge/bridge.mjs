@@ -29,7 +29,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -838,7 +838,7 @@ async function sessionSay(text) {
       if (/inactive context|required service|disposed/i.test(msg)) {
         host = null;
         broadcastStatus();
-        appendEvent("system", { text: "⚠ 桌面宿主插件连接已失效：请重启一次 DSH（或重装 dsh-agent-host）后再试。" });
+        appendEvent("system", { text: "⚠ 桌面宿主插件连接已失效：请重启一次 DSH（或重装 dsh-plugin）后再试。" });
         return { ok: false, error: "desktop host inactive", seq: ev.seq };
       }
       appendEvent("system", { text: "⚠ 客户端会话发送失败，回退无头引擎：" + msg.slice(0, 300) });
@@ -850,22 +850,13 @@ async function sessionSay(text) {
   return { ok: true, seq: ev.seq, queued: session.pending.length, waking };
 }
 
-async function sessionCodex(enabled) {
-  if (!hostReady()) err(503, "DSH 客户端 agent 未连接，无法切换 Codex 模式");
-  const r = await hostCall("hostCodexSet", { enabled: !!enabled }, 20000);
-  hostCodex = !!(r && r.enabled);
-  broadcastStatus();
-  appendEvent("system", { text: hostCodex ? "🧩 Codex 模式：开（与客户端同步）" : "🧩 Codex 模式：关（与客户端同步）" });
-  return { ok: true, enabled: hostCodex, result: r && r.result };
-}
-
 async function sessionStop() {
   if (hostReady() && active.sessionId) {
     try {
       await hostCall("hostStop", { sessionId: active.sessionId });
       hostRunning = false;
       broadcastStatus();
-      appendEvent("system", { text: "⏹ 已停止当前会话" });
+      appendEvent("system", { text: "已停止当前会话" });
       return { ok: true, host: true };
     } catch (e) {
       appendEvent("system", { text: "⚠ 停止失败：" + String(e.message || e).slice(0, 300) });
@@ -875,7 +866,7 @@ async function sessionStop() {
   if (worker.child && worker.running) {
     worker.killing = true;
     try { execFile("taskkill", ["/pid", String(worker.child.pid), "/T", "/F"], () => {}); } catch {}
-    appendEvent("system", { text: "⏹ 已停止无头 DSH 工作进程" });
+    appendEvent("system", { text: "已停止无头 DSH 工作进程" });
     return { ok: true, host: false };
   }
   return { ok: false, error: "没有正在运行的会话" };
@@ -1469,7 +1460,7 @@ function setModel(id) {
   enginesCfg.dsh.model = hit.id;
   saveEngines();
   try { ensureOverlay(); } catch {}
-  appendEvent("system", { text: `🔄 模型已切换为 ${hit.label} — 下条指令生效（续接旧会话时以该会话已记录的模型为准）` });
+  appendEvent("system", { text: `模型已切换为 ${hit.label} — 下条指令生效（续接旧会话时以该会话已记录的模型为准）` });
   log("model switched to", hit.id);
   return modelsInfo();
 }
@@ -1838,7 +1829,7 @@ function handleHostFrame(sessionId, frame) {
     if (ev.type === "turn/end") {
       hostRunning = false;
       if (ev.data?.reason?.kind === "aborted") {
-        appendEvent("system", { text: "⏹ 会话已停止" });
+        appendEvent("system", { text: "会话已停止" });
       }
       broadcastStatus();
     }
@@ -1985,7 +1976,7 @@ function mergedSessions(refresh = false) {
     }
     byId.set(id, {
       id,
-      title: titleOf(id) || "DSH 客户端会话",
+      title: titleOf(id) || "新会话",
       updatedAt: Number(h.updatedAt) || Date.now(),
       size: 0,
       model: active.sessionId === id ? (active.model || "") : "",
@@ -2015,7 +2006,7 @@ async function selectSession(id) {
     setActiveSession(id);
     resetEventStream();
     appendEvent("system", {
-      text: `🔗 已切换到 DSH 客户端会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（同一 Agent，实时同步）`,
+      text: `已切换到 DSH 客户端会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（同一 Agent，实时同步）`,
     });
     await hostCall("hostFollow", { sessionId: id });
     log("session selected via desktop host:", id);
@@ -2031,7 +2022,7 @@ async function selectSession(id) {
   setActiveSession(id);
   resetEventStream();
   appendEvent("system", {
-    text: `🔗 已切换到 DSH 会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（DSH 与侧边栏双向同步）`,
+    text: `已切换到 DSH 会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（DSH 与侧边栏双向同步）`,
   });
   replaySession(80);
   log("session selected:", id);
@@ -2045,7 +2036,7 @@ async function newActiveSession() {
       const id = String(created.sessionId || "");
       resetEventStream();
       setActiveSession(id);
-      appendEvent("system", { text: "🆕 已在 DSH 客户端新建会话（客户端立即可见）" });
+      appendEvent("system", { text: "已在 DSH 客户端新建会话（客户端立即可见）" });
       if (id) await hostCall("hostFollow", { sessionId: id });
       return activeInfo();
     } catch (e) {
@@ -2061,7 +2052,7 @@ async function newActiveSession() {
   active.lastMtime = 0;
   saveActive();
   resetEventStream();
-  appendEvent("system", { text: "🆕 已新建会话 — 下条指令会在 DSH 里创建一个真实会话（DSH 侧也能看到并继续）" });
+  appendEvent("system", { text: "已新建会话 — 下条指令会在 DSH 里创建一个真实会话（DSH 侧也能看到并继续）" });
   return activeInfo();
 }
 
@@ -2291,7 +2282,7 @@ async function route(method, pathname, q, body, res) {
     if (!["dsh", "queue"].includes(mode)) err(400, "mode 仅支持 dsh | queue");
     enginesCfg.mode = mode;
     saveEngines();
-    appendEvent("system", { text: mode === "dsh" ? "🔄 引擎模式：自动唤醒无头 DSH" : "🔄 引擎模式：排队（由在线 DSH 会话 claim 领取）" });
+    appendEvent("system", { text: mode === "dsh" ? "引擎模式：自动唤醒无头 DSH" : "引擎模式：排队（由在线 DSH 会话 claim 领取）" });
     return { json: engineInfo() };
   }
 
@@ -2372,7 +2363,6 @@ async function route(method, pathname, q, body, res) {
 
   if (pathname === "/session/say" && method === "POST") return { json: await sessionSay(body.text) };
   if (pathname === "/session/stop" && method === "POST") return { json: await sessionStop() };
-  if (pathname === "/session/codex" && method === "POST") return { json: await sessionCodex(body.enabled) };
   if (pathname === "/session/claim" && method === "POST") return { json: sessionClaim() };
   if (pathname === "/session/post" && method === "POST") return { json: sessionPost(body.kind, body) };
   if (pathname === "/session/events" && method === "GET") return { json: sessionEvents(Number(q.get("since") || 0)) };
@@ -2401,7 +2391,6 @@ async function handleExtRequest(method, params) {
   switch (method) {
     case "sessionSay": return await sessionSay(params.text);
     case "sessionStop": return await sessionStop();
-    case "sessionCodex": return await sessionCodex(params.enabled);
     case "sessionEvents": return sessionEvents(Number(params.since || 0));
     case "sessionStatus": return sessionStatusPayload();
     case "sessions": {
@@ -2504,7 +2493,7 @@ server.listen(PORT, HOST, () => {
   restoreActive();
   if (active.sessionId) {
     resetEventStream();
-    appendEvent("system", { text: `♻️ 已恢复上次会话${active.title ? `「${active.title}」` : ""}（${String(active.sessionId).slice(0, 20)}…）` });
+    appendEvent("system", { text: `已恢复上次会话${active.title ? `「${active.title}」` : ""}（${String(active.sessionId).slice(0, 20)}…）` });
     replaySession(80);
     log("session restored:", active.sessionId, "events:", session.events.length);
   }

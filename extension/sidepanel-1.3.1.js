@@ -1,6 +1,6 @@
 // 侧边栏：DSH 会话镜像（查看进展 + 下达指令）+ 会话选择 / 新建 + 模型切换 + 标签页列表。
 // 这里没有任何智能：只渲染桥接推来的事件、把输入送回桥接。
-const port = chrome.runtime.connect({ name: "sidepanel" });
+let port = null;
 const $ = (id) => document.getElementById(id);
 const pendingEl = () => $("pending");
 
@@ -13,8 +13,6 @@ let sessionTitle = "";
 let currentModel = "";
 let models = [];
 let running = false;
-let hostConnected = false;
-let codexEnabled = false;
 const liveStreams = new Map(); // streamId -> { textEl, thinkEl }
 
 // ---------- 视图切换（横向滑动） ----------
@@ -57,27 +55,24 @@ function bindDropdown(ddId, btnId) {
 }
 
 // ---------- 连接状态 ----------
-function updateStop() {
-  const b = $("btn-stop");
-  if (!b) return;
-  b.classList.toggle("hidden", !running);
-  $("pending").classList.toggle("running", running);
-}
+const SEND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" /></svg>';
+const STOP_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.2" /></svg>';
 
-function updateCodex() {
-  const b = $("btn-codex");
+function updateSendButton() {
+  const b = $("btn-send");
   if (!b) return;
-  b.classList.toggle("hidden", !hostConnected);
-  b.classList.toggle("on", codexEnabled);
-  b.textContent = codexEnabled ? "Codex 开" : "Codex";
+  b.classList.toggle("stop", running);
+  b.title = running ? "停止当前会话" : "发送";
+  b.setAttribute("aria-label", running ? "停止当前会话" : "发送");
+  b.innerHTML = running ? STOP_ICON : SEND_ICON;
 }
 
 function setRunning(next) {
   running = !!next;
   workerRunning = running;
-  updateStop();
+  updateSendButton();
   if (running) {
-    pendingEl().textContent = "⚙ DSH 正在执行…";
+    pendingEl().textContent = "DSH 正在执行…";
     pendingEl().classList.remove("hidden");
   } else {
     pendingEl().classList.remove("running");
@@ -88,8 +83,6 @@ function setRunning(next) {
 function renderStatus(m) {
   connected = !!m.connected;
   if (typeof m.running === "boolean") setRunning(m.running);
-  if (typeof m.host === "boolean") { hostConnected = m.host; updateCodex(); }
-  if (typeof m.codex === "boolean") { codexEnabled = m.codex; updateCodex(); }
   $("dot").classList.toggle("on", connected);
   updateBanner();
   updateDisabled();
@@ -121,16 +114,11 @@ function renderEngine(e) {
   if (!e) { el.classList.add("hidden"); return; }
   const host = e.host || {};
   if (host.connected) {
-    hostConnected = true;
-    codexEnabled = !!host.codex;
-    updateCodex();
     el.textContent = host.codex ? "DSH · Codex" : "DSH";
     el.title = "侧边栏直接驱动 DSH 客户端里的同一会话，实时同步对话、思考与停止状态";
     el.classList.toggle("live", !!host.running);
     setRunning(!!host.running);
   } else {
-    hostConnected = false;
-    updateCodex();
     const mode = e.mode === "dsh" ? "DSH" : "队列";
     const model = (e.model || "").replace(/^deepseek-/, "");
     el.textContent = mode + (model ? " · " + model : "");
@@ -149,7 +137,7 @@ function renderEngine(e) {
       : "新会话（下条指令创建）";
     $("session-hint").textContent = hint;
     $("session-hint").title = e.session.sessionId || "";
-    $("session-label").textContent = e.session.sessionId ? (sessionTitle || shortId(e.session.sessionId)) : "＋ 新会话";
+    $("session-label").textContent = e.session.sessionId ? (sessionTitle || "新会话") : "＋ 新会话";
   }
   if (Array.isArray(e.models) && e.models.length && !models.length) renderModels({ models: e.models, selected: e.configuredModel || e.model });
 }
@@ -212,13 +200,13 @@ function renderSessions(m) {
     const when = s.updatedAt
       ? new Date(s.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
       : "";
-    menu.appendChild(sessionItem({ id: s.id, title: s.title || shortId(s.id), meta: when, current: s.id === currentSessionId }));
+    menu.appendChild(sessionItem({ id: s.id, title: s.title || "新会话", meta: when, current: s.id === currentSessionId }));
   }
   const hit = list.find((s) => s.id === currentSessionId);
   sessionTitle = hit ? (hit.title || "") : "";
-  $("session-label").textContent = currentSessionId ? (sessionTitle || shortId(currentSessionId)) : "＋ 新会话";
+  $("session-label").textContent = currentSessionId ? (sessionTitle || "新会话") : "＋ 新会话";
   $("session-hint").textContent = currentSessionId
-    ? "当前会话：" + (sessionTitle || shortId(currentSessionId))
+    ? "当前会话：" + (sessionTitle || "新会话")
     : "新会话（下条指令创建）";
   updateDisabled();
 }
@@ -429,7 +417,7 @@ function resetChat(text) {
   workerRunning = false;
   running = false;
   liveStreams.clear();
-  updateStop();
+  updateSendButton();
   lastToolBody = null;
   lastToolSummary = null;
   $("pending").classList.add("hidden");
@@ -437,7 +425,7 @@ function resetChat(text) {
 }
 
 // ---------- 端口消息 ----------
-port.onMessage.addListener((m) => {
+function handlePortMessage(m) {
   if (!m || typeof m !== "object") return;
   if (m.type === "status") renderStatus(m);
   if (m.type === "engine") renderEngine(m.engine);
@@ -487,7 +475,7 @@ port.onMessage.addListener((m) => {
     scrollBottom();
   }
   if (m.type === "sayOk") port.postMessage({ type: "getEngine" });
-});
+}
 
 // ---------- 发送 ----------
 function autoGrow() {
@@ -506,20 +494,19 @@ function send(text) {
   port.postMessage({ type: "say", text: value });
 }
 
-$("btn-send").addEventListener("click", () => send());
-$("btn-stop").addEventListener("click", () => {
+function stopSession() {
+  if (!running) return;
   port.postMessage({ type: "stop" });
-  pendingEl().textContent = "⏹ 正在停止…";
+  pendingEl().textContent = "正在停止…";
   pendingEl().classList.remove("hidden");
-});
-$("btn-codex").addEventListener("click", () => {
-  if (!hostConnected) return;
-  port.postMessage({ type: "codexToggle", enabled: !codexEnabled });
-  pendingEl().textContent = "🧩 正在切换 Codex 模式…";
-  pendingEl().classList.remove("hidden");
+}
+
+$("btn-send").addEventListener("click", () => {
+  if (running) stopSession();
+  else send();
 });
 $("input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (running) stopSession(); else send(); }
 });
 $("input").addEventListener("input", autoGrow);
 
@@ -557,8 +544,8 @@ $("btn-refresh").addEventListener("click", () => {
 });
 $("btn-settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
-// ---------- 初始化 ----------
-(function init() {
+// ---------- 初始化 / 断线重连 ----------
+function bootstrap() {
   resetChat("正在连接 DSH 会话…");
   port.postMessage({ type: "getTabs" });
   port.postMessage({ type: "getEngine" });
@@ -567,4 +554,30 @@ $("btn-settings").addEventListener("click", () => chrome.runtime.openOptionsPage
   setTimeout(() => {
     if (!connected) updateBanner();
   }, 1200);
-})();
+}
+
+function connectPort() {
+  let p;
+  try {
+    p = chrome.runtime.connect({ name: "sidepanel" });
+  } catch {
+    setTimeout(() => { port = connectPort(); if (port) bootstrap(); }, 800);
+    return null;
+  }
+  p.onMessage.addListener(handlePortMessage);
+  p.onDisconnect.addListener(() => {
+    if (port !== p) return;
+    connected = false;
+    updateBanner();
+    updateDisabled();
+    setTimeout(() => {
+      if (port !== p) return;
+      port = connectPort();
+      if (port) bootstrap();
+    }, 600);
+  });
+  return p;
+}
+
+port = connectPort();
+if (port) bootstrap();

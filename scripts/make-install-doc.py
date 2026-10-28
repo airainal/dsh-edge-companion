@@ -294,7 +294,7 @@ def build():
     t4 = doc.add_paragraph()
     t4.alignment = WD_ALIGN_PARAGRAPH.CENTER
     t4.paragraph_format.space_before = Pt(42)
-    r = t4.add_run("版本 1.4.0    |    2026 年 10 月")
+    r = t4.add_run("版本 1.4.1    |    2026 年 10 月")
     set_run(r, CN, 10.5, False, DIM)
 
     t5 = doc.add_paragraph()
@@ -331,7 +331,7 @@ def build():
             ["操作系统", "Windows 10 / 11", "插件与启动器均为 Windows 专用"],
             ["浏览器", "Microsoft Edge 114 或更高", "商店版即可，edge://version 可查看版本"],
             ["DeepSeek Harness", "已安装并已登录", "侧边栏的自动执行依赖它；只做 CDP 也需安装"],
-            ["安装包", "dsh-edge-companion-1.4.0.zip", "解压后保持目录完整，不要只拷单个文件"],
+            ["安装包", "dsh-edge-companion-1.4.1.zip", "解压后保持目录完整，不要只拷单个文件"],
         ],
         [3.2, 4.8, 9.0],
     )
@@ -343,8 +343,7 @@ def build():
         [
             ["extension/", "Edge 扩展：执行 CDP、渲染侧边栏会话镜像", "需要在 Edge 中加载一次"],
             ["bridge/", "本地桥接：127.0.0.1:8766，连接扩展与 DSH", "通常无需手动启动"],
-            ["dsh-plugin/", "DSH 插件：DSH 启动时自动拉起桥接", "在 DSH 中安装一次"],
-            ["dsh-agent-host/", "DSH 插件：把侧边栏接到客户端同一会话（实时/停止/Codex）", "在 DSH 中安装一次"],
+            ["dsh-plugin/", "DSH 插件：启动桥接，并把侧边栏接到客户端同一会话（实时/停止/Codex）", "在 DSH 中安装一次"],
         ],
         [3.4, 10.0, 3.6],
     )
@@ -362,14 +361,14 @@ def build():
     para(doc, "整个安装过程只需三件事：解压、加载 Edge 扩展、在 DSH 中安装插件。全程不需要命令行。", 10.5, False, INK)
 
     heading(doc, "2.1  解压安装包", 2)
-    step(doc, "把 dsh-edge-companion-1.4.0.zip 解压到任意目录（路径可以包含空格或中文）。")
-    step(doc, "建议不要放在 C:\\ 根目录；解压后应能看到 extension、bridge、dsh-plugin、dsh-agent-host 等文件夹。")
+    step(doc, "把 dsh-edge-companion-1.4.1.zip 解压到任意目录（路径可以包含空格或中文）。")
+    step(doc, "建议不要放在 C:\\ 根目录；解压后应能看到 extension、bridge、dsh-plugin 等文件夹。")
 
     heading(doc, "2.2  加载 Edge 扩展（必做）", 2)
     step(doc, "打开 Edge，在地址栏输入 edge://extensions 并回车。")
     step(doc, "打开左下角的「开发人员模式」开关。")
     step(doc, "点击页面上方的「加载解压缩的扩展」，选择解压出来的 extension 文件夹。")
-    step(doc, "看到 DSH Edge Bridge 1.3.0（蓝发鲸鱼少女图标）即安装成功。")
+    step(doc, "看到 DSH Edge Bridge 1.3.1（蓝发鲸鱼少女图标）即安装成功。")
     para(
         doc,
         "扩展 ID 由 manifest.json 里的 key 固定（kioclakapkblemfnlgcfbciedfhkpmhc），换路径、换电脑都不会变。",
@@ -378,11 +377,11 @@ def build():
         DIM,
     )
 
-    heading(doc, "2.3  安装两个 DSH 插件（推荐，必做）", 2)
+    heading(doc, "2.3  安装 DSH 插件（推荐，必做）", 2)
     para(
         doc,
-        "两个插件分工：dsh-plugin 负责启动桥接；dsh-agent-host 负责把侧边栏接到客户端同一个 Agent，"
-        "实现实时流、停止按钮和 Codex 状态同步。",
+        "只需要安装一个 dsh-plugin：它同时负责启动桥接，并把侧边栏接到客户端同一个 Agent，"
+        "实现实时流、发送键变停止键和 Codex 状态同步。",
         10.5,
         False,
         INK,
@@ -390,8 +389,8 @@ def build():
     step(doc, "打开 DeepSeek Harness，点击左侧的 Plugins（插件）页面。")
     step(doc, "点击 Add plugin，选择 Install a third-party plugin（安装第三方插件）。")
     step(doc, "填入 dsh-plugin 文件夹的绝对路径。例如：D:\\tools\\dsh-edge-companion\\dsh-plugin")
-    step(doc, "点 Install；再安装第二个文件夹 dsh-agent-host（例如 D:\\tools\\dsh-edge-companion\\dsh-agent-host）。")
-    step(doc, "两次都以 link: 方式安装，不联网、不下载；如果提示需要重启，重启一次 DSH。")
+    step(doc, "点 Install（以 link: 方式安装，不联网、不下载）。")
+    step(doc, "装完完全退出 DSH 再启动一次，确保旧桥接/旧宿主实例被替换。")
     callout(
         doc,
         "如何取路径：在资源管理器里进入 dsh-edge-companion，按住 Shift 右键点击对应文件夹，"
@@ -417,7 +416,7 @@ def build():
     heading(doc, "3  日常使用", 1)
     para(
         doc,
-        "侧边栏不是另开一个聊天框：装好 dsh-agent-host 后，它直接驱动客户端当前会话——"
+        "侧边栏不是另开一个聊天框：装好 dsh-plugin 后，它直接驱动客户端当前会话——"
         "你的指令会作为普通用户消息出现在客户端，思考过程、工具调用、回复与 token 用量会实时同步，"
         "停止按钮和 Codex 模式也与客户端是同一个。未装该插件时才回退到独立无头 agent。",
         10.5,
@@ -489,7 +488,7 @@ def build():
     heading(doc, "5  更新与卸载", 1)
     heading(doc, "5.1  更新", 2)
     step(doc, "扩展：用新版本覆盖 extension 目录后，在 edge://extensions 点该卡片的刷新按钮。")
-    step(doc, "插件：DSH → Plugins → 分别移除旧插件，再按 2.3 重新安装新路径下的 dsh-plugin 与 dsh-agent-host。")
+    step(doc, "插件：DSH → Plugins → 移除旧插件，再按 2.3 重新安装新路径下的 dsh-plugin。")
     heading(doc, "5.2  卸载", 2)
     step(doc, "DSH → Plugins → 移除 DSH Edge Bridge 与 DSH Agent Host；再到 edge://extensions 移除扩展。")
     step(doc, "停止桥接：在终端执行 curl -X POST http://127.0.0.1:8766/shutdown。")
@@ -503,8 +502,7 @@ def build():
             "dsh-edge-companion/",
             "├── extension/        Edge 扩展（加载这个文件夹）",
             "├── bridge/           本地桥接服务（127.0.0.1:8766）",
-            "├── dsh-plugin/       DSH 插件（随 DSH 启动桥接）",
-            "├── dsh-agent-host/   DSH 插件（侧边栏接客户端同一会话）",
+            "├── dsh-plugin/       DSH 插件（启动桥接 + 接客户端同一会话）",
             "├── bin/              命令行客户端 edge.cmd",
             "├── client/           JS 客户端封装",
             "├── scripts/          安装、自检、启动脚本",
