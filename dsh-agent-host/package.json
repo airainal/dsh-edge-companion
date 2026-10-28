@@ -1,0 +1,24 @@
+{
+  "name": "@local/dsh-agent-host",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bridges the DSH Edge Bridge to the live desktop Session Controller, so the Edge side panel drives the same Agent (including Codex mode) instead of spawning a headless one.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.png",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# Connects the Edge side panel to the live desktop Session Controller.
+# It does not create a second Agent: prompts, cancellation and the live event
+# stream all go through the same session the desktop client is using.
+- insert:
+    - id: dsh-agent-host
+      name: '@local/dsh-agent-host'

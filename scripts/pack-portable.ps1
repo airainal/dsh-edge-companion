@@ -3,7 +3,7 @@
 # Keep this file ASCII-only.
 #   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1 -Version 1.4.0
-param([string]$Version = '1.3.0', [string]$OutDir = 'dist')
+param([string]$Version = '1.4.0', [string]$OutDir = 'dist')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 if ([System.IO.Path]::IsPathRooted($OutDir)) { $dist = $OutDir } else { $dist = Join-Path $root $OutDir }
@@ -12,7 +12,7 @@ $stage = Join-Path $dist 'stage\dsh-edge-companion'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-foreach ($d in @('extension', 'bin', 'client', 'dsh-plugin', 'scripts')) {
+foreach ($d in @('extension', 'bin', 'client', 'dsh-plugin', 'dsh-agent-host', 'scripts')) {
     Copy-Item (Join-Path $root $d) (Join-Path $stage $d) -Recurse -Force
 }
 

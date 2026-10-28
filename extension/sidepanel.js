@@ -12,6 +12,10 @@ let currentSessionId = null;
 let sessionTitle = "";
 let currentModel = "";
 let models = [];
+let running = false;
+let hostConnected = false;
+let codexEnabled = false;
+const liveStreams = new Map(); // streamId -> { textEl, thinkEl }
 
 // ---------- 视图切换（横向滑动） ----------
 $("view-chat").addEventListener("click", () => switchView("chat"));
@@ -53,8 +57,39 @@ function bindDropdown(ddId, btnId) {
 }
 
 // ---------- 连接状态 ----------
+function updateStop() {
+  const b = $("btn-stop");
+  if (!b) return;
+  b.classList.toggle("hidden", !running);
+  $("pending").classList.toggle("running", running);
+}
+
+function updateCodex() {
+  const b = $("btn-codex");
+  if (!b) return;
+  b.classList.toggle("hidden", !hostConnected);
+  b.classList.toggle("on", codexEnabled);
+  b.textContent = codexEnabled ? "Codex 开" : "Codex";
+}
+
+function setRunning(next) {
+  running = !!next;
+  workerRunning = running;
+  updateStop();
+  if (running) {
+    pendingEl().textContent = "⚙ DSH 正在执行…";
+    pendingEl().classList.remove("hidden");
+  } else {
+    pendingEl().classList.remove("running");
+    if (!lastUserSeq) pendingEl().classList.add("hidden");
+  }
+}
+
 function renderStatus(m) {
   connected = !!m.connected;
+  if (typeof m.running === "boolean") setRunning(m.running);
+  if (typeof m.host === "boolean") { hostConnected = m.host; updateCodex(); }
+  if (typeof m.codex === "boolean") { codexEnabled = m.codex; updateCodex(); }
   $("dot").classList.toggle("on", connected);
   updateBanner();
   updateDisabled();
@@ -84,13 +119,27 @@ function updateDisabled() {
 function renderEngine(e) {
   const el = $("engine");
   if (!e) { el.classList.add("hidden"); return; }
-  const mode = e.mode === "dsh" ? "DSH" : "队列";
-  const model = (e.model || "").replace(/^deepseek-/, "");
-  el.textContent = mode + (model ? " · " + model : "");
-  el.title = e.mode === "dsh"
-    ? "侧边栏指令会自动唤醒 DSH headless 执行（模型：" + (e.provider || "?") + "/" + (e.model || "?") + "）"
-    : "队列模式：指令排队，等你当前的 DSH 会话领取";
-  el.classList.toggle("live", !!e.worker && e.worker.running);
+  const host = e.host || {};
+  if (host.connected) {
+    hostConnected = true;
+    codexEnabled = !!host.codex;
+    updateCodex();
+    el.textContent = host.codex ? "DSH · Codex" : "DSH";
+    el.title = "侧边栏直接驱动 DSH 客户端里的同一会话，实时同步对话、思考与停止状态";
+    el.classList.toggle("live", !!host.running);
+    setRunning(!!host.running);
+  } else {
+    hostConnected = false;
+    updateCodex();
+    const mode = e.mode === "dsh" ? "DSH" : "队列";
+    const model = (e.model || "").replace(/^deepseek-/, "");
+    el.textContent = mode + (model ? " · " + model : "");
+    el.title = e.mode === "dsh"
+      ? "侧边栏指令会自动唤醒 DSH headless 执行（模型：" + (e.provider || "?") + "/" + (e.model || "?") + "）"
+      : "队列模式：指令排队，等你当前的 DSH 会话领取";
+    el.classList.toggle("live", !!e.worker && e.worker.running);
+    setRunning(!!e.worker && e.worker.running);
+  }
   el.classList.remove("hidden");
   if (e.session) {
     currentSessionId = e.session.sessionId || null;
@@ -211,6 +260,15 @@ function clearPendingIfAfter(seq) {
   }
 }
 
+function getLive(streamId) {
+  let live = liveStreams.get(streamId);
+  if (!live) {
+    live = { textEl: null, bubble: null, thinkEl: null, thinkBody: null };
+    liveStreams.set(streamId, live);
+  }
+  return live;
+}
+
 function appendEvent(ev, { scroll = true } = {}) {
   const chat = $("chat");
   const empty = chat.querySelector(".empty");
@@ -225,6 +283,62 @@ function appendEvent(ev, { scroll = true } = {}) {
     chat.appendChild(d);
     lastUserSeq = ev.seq;
     $("pending").classList.remove("hidden");
+  } else if (ev.kind === "assistant_delta") {
+    const live = getLive(ev.streamId || "stream");
+    if (!live.textEl) {
+      const d = document.createElement("div");
+      d.className = "msg left";
+      d.innerHTML = '<div class="who">DSH</div><div class="bubble"></div>';
+      live.textEl = d;
+      live.bubble = d.querySelector(".bubble");
+      chat.appendChild(d);
+    }
+    live.bubble.textContent += ev.text || "";
+  } else if (ev.kind === "thinking_delta") {
+    const live = getLive(ev.streamId || "stream");
+    if (!live.thinkEl) {
+      const d = document.createElement("details");
+      d.className = "think";
+      d.open = true;
+      const sum = document.createElement("summary");
+      sum.textContent = "💭 思考过程（实时）";
+      const body = document.createElement("div");
+      body.className = "think-body";
+      d.appendChild(sum);
+      d.appendChild(body);
+      live.thinkEl = d;
+      live.thinkBody = body;
+      chat.appendChild(d);
+    }
+    live.thinkBody.textContent += ev.text || "";
+  } else if (ev.kind === "assistant_final") {
+    const live = liveStreams.get(ev.streamId || "stream") || { textEl: null };
+    if (live.textEl) {
+      live.bubble.innerHTML = mdLite(ev.text || "");
+    } else {
+      const d = document.createElement("div");
+      d.className = "msg left";
+      d.innerHTML = '<div class="who">DSH</div><div class="bubble"></div>';
+      d.querySelector(".bubble").innerHTML = mdLite(ev.text || "");
+      chat.appendChild(d);
+    }
+    if (live.thinkEl && live.thinkEl.querySelector("summary")) {
+      live.thinkEl.open = false;
+      live.thinkEl.querySelector("summary").textContent = "💭 思考过程";
+    }
+    liveStreams.delete(ev.streamId || "stream");
+    lastUserSeq = 0;
+    setRunning(false);
+  } else if (ev.kind === "stream_end") {
+    const live = liveStreams.get(ev.streamId || "stream");
+    if (live) {
+      if (live.thinkEl && live.thinkEl.querySelector("summary")) {
+        live.thinkEl.open = false;
+        live.thinkEl.querySelector("summary").textContent = "💭 思考过程";
+      }
+      if (live.textEl && !live.bubble.textContent) live.textEl.remove();
+      liveStreams.delete(ev.streamId || "stream");
+    }
   } else if (ev.kind === "assistant") {
     const d = document.createElement("div");
     d.className = "msg left";
@@ -232,6 +346,7 @@ function appendEvent(ev, { scroll = true } = {}) {
     d.querySelector(".bubble").innerHTML = mdLite(ev.text || "");
     chat.appendChild(d);
     clearPendingIfAfter(ev.seq);
+    setRunning(false);
   } else if (ev.kind === "activity") {
     const d = document.createElement("div");
     d.className = "activity";
@@ -312,6 +427,9 @@ function resetChat(text) {
   lastSeq = 0;
   lastUserSeq = 0;
   workerRunning = false;
+  running = false;
+  liveStreams.clear();
+  updateStop();
   lastToolBody = null;
   lastToolSummary = null;
   $("pending").classList.add("hidden");
@@ -383,10 +501,23 @@ function send(text) {
   const value = (text != null ? text : t.value).trim();
   if (!value || !connected) return;
   if (text == null) { t.value = ""; autoGrow(); }
+  setRunning(true);
+  pendingEl().classList.remove("hidden");
   port.postMessage({ type: "say", text: value });
 }
 
 $("btn-send").addEventListener("click", () => send());
+$("btn-stop").addEventListener("click", () => {
+  port.postMessage({ type: "stop" });
+  pendingEl().textContent = "⏹ 正在停止…";
+  pendingEl().classList.remove("hidden");
+});
+$("btn-codex").addEventListener("click", () => {
+  if (!hostConnected) return;
+  port.postMessage({ type: "codexToggle", enabled: !codexEnabled });
+  pendingEl().textContent = "🧩 正在切换 Codex 模式…";
+  pendingEl().classList.remove("hidden");
+});
 $("input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });

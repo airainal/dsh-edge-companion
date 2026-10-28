@@ -36,7 +36,23 @@ function findNode() {
   return { exe: process.execPath, electron: true };
 }
 
-function startBridge() {
+const BRIDGE_VERSION = "1.2.0";
+
+async function stopOutdatedBridge() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/status`, { signal: AbortSignal.timeout(1500) });
+    const info = await res.json();
+    if (info && info.version && info.version !== BRIDGE_VERSION) {
+      console.log("[dsh-edge-bridge] replacing outdated bridge", info.version, "->", BRIDGE_VERSION);
+      await fetch(`http://127.0.0.1:${port}/shutdown`, { method: "POST", signal: AbortSignal.timeout(2000) }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  } catch {
+    // no bridge listening: start fresh
+  }
+}
+
+async function startBridge() {
   if (started) return;
   started = true;
 
@@ -45,6 +61,8 @@ function startBridge() {
     console.warn("[dsh-edge-bridge] bridge.mjs not found; keep the dsh-edge-companion folder intact next to dsh-plugin.");
     return;
   }
+
+  await stopOutdatedBridge();
 
   const { exe, electron } = findNode();
   const env = { ...process.env, DSHEDGE_PORT: String(port) };
@@ -70,5 +88,5 @@ function startBridge() {
 }
 
 export function apply() {
-  startBridge();
+  startBridge().catch((e) => console.warn("[dsh-edge-bridge] start failed:", e && e.message ? e.message : String(e)));
 }

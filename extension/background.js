@@ -76,6 +76,24 @@ chrome.runtime.onConnect.addListener((port) => {
         port.postMessage({ type: "sayError", error: String((e && e.message) || e) });
       }
     }
+    if (m.type === "stop") {
+      try {
+        const r = await bridgeCall("sessionStop", {}, 20000);
+        port.postMessage({ type: "sayOk", ...r });
+        pushEngineToPort(port);
+      } catch (e) {
+        port.postMessage({ type: "sayError", error: "停止失败：" + String((e && e.message) || e) });
+      }
+    }
+    if (m.type === "codexToggle") {
+      try {
+        const r = await bridgeCall("sessionCodex", { enabled: !!m.enabled }, 25000);
+        port.postMessage({ type: "sayOk", ...r });
+        pushEngineToPort(port);
+      } catch (e) {
+        port.postMessage({ type: "sayError", error: "切换 Codex 失败：" + String((e && e.message) || e) });
+      }
+    }
     if (m.type === "loadEvents") {
       try {
         const r = await bridgeCall("sessionEvents", { since: Number(m.since || 0) });
@@ -281,6 +299,11 @@ async function handleFrame(msg) {
   // 桥接推送：会话事件 → 转发侧边栏
   if (msg && msg.method === "session") {
     notifyPorts({ type: "session", event: msg.params && msg.params.event });
+    return;
+  }
+  // 桥接推送：桌面客户端运行状态（停止按钮 / Codex 标识）
+  if (msg && msg.method === "status") {
+    notifyPorts({ type: "status", ...(msg.params || {}) });
     return;
   }
   // 桥接推送：切换会话 → 让侧边栏清空并重载历史

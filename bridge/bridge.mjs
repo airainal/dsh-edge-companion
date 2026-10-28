@@ -29,7 +29,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -178,6 +178,10 @@ class WsConn {
 // ============================================================
 
 let ext = null;
+let host = null; // DSH desktop agent host (same process as the client)
+let hostRunning = false;
+let hostCodex = false;
+let hostSessionsCache = [];
 const loadEvents = new Map(); // tabId -> 最近一次 Page.loadEventFired 的本地时间戳
 
 function attachExtension(conn) {
@@ -208,11 +212,13 @@ function attachExtension(conn) {
   conn.onclose = () => {
     clearTimeout(helloTimer);
     if (ext === session) { ext = null; log("extension disconnected"); }
+    if (host === session) { host = null; log("desktop agent host disconnected"); broadcastStatus(); }
   };
   conn.ontext = (text) => {
     session.lastSeen = Date.now();
     let msg;
     try { msg = JSON.parse(text); } catch { return; }
+    if (msg && msg.method === "agentHello") { adoptHost(session, msg); return; }
     // 扩展握手：校验令牌 + 决定是否接管（同一安装=重连直接接管；不同浏览器=旧的还活着就拒绝）
     if (msg && msg.method === "hello") {
       clearTimeout(helloTimer);
@@ -258,6 +264,7 @@ function attachExtension(conn) {
       return;
     }
     if (!session.authenticated) { conn.close(4001, "auth required"); return; }
+    if (host === session) { handleHostMessage(session, msg); return; }
     // 扩展主动请求桥接（会话联动：sessionSay / sessionEvents / sessionStatus）
     if (msg.id != null && msg.method) {
       handleExtRequest(msg.method, msg.params || {})
@@ -292,6 +299,109 @@ function extCall(method, params = {}, timeoutMs = 20000) {
     ext.conn.sendText(JSON.stringify({ id, method, params }));
   });
 }
+
+// ============================================================
+// DSH desktop agent host（与客户端同一个进程、同一个 Agent）
+// ============================================================
+function hostReady() {
+  return !!(host && !host.conn.closed && host.adopted);
+}
+
+function adoptHost(session, msg) {
+  if (TOKEN && msg.params?.token !== TOKEN) {
+    log("agent host hello: bad token, closing");
+    try { session.conn.close(4001, "bad token"); } catch {}
+    return;
+  }
+  session.role = "host";
+  session.authenticated = true;
+  session.adopted = true;
+  session.hello = msg.params || {};
+  if (host && host !== session) {
+    // Do not close the old socket: closing it makes a stale plugin instance
+    // reconnect and replace the new host again, producing a reconnect storm.
+    // Leave it open but detached; only the newest host receives traffic.
+    log("switching desktop agent host to the newest connection");
+    try { host.conn.onclose = null; } catch {}
+  }
+  const previous = host;
+  host = session;
+  try { session.conn.sendText(JSON.stringify({ id: msg.id, result: { ok: true } })); } catch {}
+  log("desktop agent host candidate, version =", session.hello.version || "?");
+
+  // A HMR reload can leave several plugin instances connected: only the one
+  // whose context is still active can answer hostStatus. Validate before use.
+  hostCall("hostPing", {}, 5000)
+    .then(() => {
+      if (host !== session) return;
+      try { session.conn.sendText(JSON.stringify({ method: "agentReady", params: { bridgeVersion: VERSION } })); } catch {}
+      log("desktop agent host ready, version =", session.hello.version || "?");
+      broadcastStatus();
+      if (active.sessionId) {
+        hostCall("hostFollow", { sessionId: active.sessionId }).catch((e) => log("initial hostFollow failed:", String(e.message || e)));
+      }
+    })
+    .catch((e) => {
+      log("rejecting stale desktop agent host:", String(e.message || e));
+      if (host !== session) return;
+      host = previous && !previous.conn.closed ? previous : null;
+      try { session.conn.onclose = null; } catch {}
+      broadcastStatus();
+    });
+}
+
+function hostCall(method, params = {}, timeoutMs = 20000) {
+  if (!hostReady()) return Promise.reject(new HttpError(503, "DSH 客户端 agent 未连接（请确认 DSH 正在运行且插件已启用）"));
+  const h = host;
+  return new Promise((resolve, reject) => {
+    const id = h.nextId++;
+    const timer = setTimeout(() => {
+      h.pending.delete(id);
+      reject(new HttpError(504, method + " timeout"));
+    }, timeoutMs);
+    h.pending.set(id, { resolve, reject, timer });
+    try {
+      h.conn.sendText(JSON.stringify({ id, method, params }));
+    } catch (e) {
+      clearTimeout(timer);
+      h.pending.delete(id);
+      reject(e);
+    }
+  });
+}
+
+function handleHostMessage(session, msg) {
+  switch (msg.method) {
+    case "hostFrame":
+      handleHostFrame(msg.params?.sessionId, msg.params?.frame);
+      return;
+    case "hostStatus":
+      if (msg.params && typeof msg.params.running === "boolean") hostRunning = msg.params.running;
+      if (typeof msg.params?.codex === "boolean") hostCodex = msg.params.codex;
+      broadcastStatus();
+      return;
+    case "hostCodex":
+      if (typeof msg.params?.enabled === "boolean") { hostCodex = msg.params.enabled; broadcastStatus(); }
+      return;
+    case "hostSessions":
+      hostSessionsCache = Array.isArray(msg.params?.sessions) ? msg.params.sessions : [];
+      return;
+    case "hostSession":
+      if (msg.params?.sessionId) {
+        active.sessionId = String(msg.params.sessionId);
+        active.title = titleOf(active.sessionId) || "";
+        active.path = findSessionFile(active.sessionId);
+        saveActive();
+      }
+      return;
+    case "hostError":
+      appendEvent("system", { text: "⚠ 客户端会话错误：" + String(msg.params?.error || "").slice(0, 400) });
+      return;
+    default:
+      return;
+  }
+}
+
 
 async function ensureAttached(tabId, { retry = true, force = false } = {}) {
   if (!ext) err(503, "extension not connected（Edge 扩展未连接）");
@@ -683,20 +793,94 @@ function appendEvent(kind, data = {}) {
   return ev;
 }
 
-function sessionSay(text) {
+function broadcastStatus() {
+  const payload = {
+    connected: !!(ext && !ext.conn.closed && ext.authenticated),
+    host: hostReady(),
+    running: !!hostRunning,
+    codex: !!hostCodex,
+    sessionId: active.sessionId || "",
+  };
+  if (ext && !ext.conn.closed) {
+    try { ext.conn.sendText(JSON.stringify({ method: "status", params: payload })); } catch {}
+  }
+}
+
+const hostEcho = new Map(); // sidebar text -> time, suppresses the durable user echo
+
+async function sessionSay(text) {
   if (!text || typeof text !== "string") err(400, "say 需要 text");
   // 「新会话」瞬时指令：清空当前会话槽（下条指令在 DSH 里新建真实会话），不唤醒不耗额度
   const t = text.trim();
   if (t === "新会话" || t === "/new") {
-    newActiveSession();
-    return { ok: true, reset: true };
+    return await newActiveSession();
   }
   const ev = appendEvent("user", { text: text.slice(0, 4000) });
   session.pending.push({ id: ev.seq, text: ev.text, at: ev.at });
+  hostEcho.set(t, Date.now());
+
+  // 优先使用 DSH 桌面客户端里同一个 Agent（Codex 模式、权限、上下文完全一致）
+  if (hostReady()) {
+    try {
+      let sid = active.sessionId;
+      if (!sid) {
+        const created = await hostCall("hostCreate", {});
+        sid = String(created.sessionId || "");
+        if (sid) setActiveSession(sid);
+      }
+      await hostCall("hostPrompt", { sessionId: sid, text });
+      hostRunning = true;
+      session.pending.length = 0;
+      broadcastStatus();
+      return { ok: true, seq: ev.seq, queued: session.pending.length, host: true, sessionId: sid };
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (/inactive context|required service|disposed/i.test(msg)) {
+        host = null;
+        broadcastStatus();
+        appendEvent("system", { text: "⚠ 桌面宿主插件连接已失效：请重启一次 DSH（或重装 dsh-agent-host）后再试。" });
+        return { ok: false, error: "desktop host inactive", seq: ev.seq };
+      }
+      appendEvent("system", { text: "⚠ 客户端会话发送失败，回退无头引擎：" + msg.slice(0, 300) });
+    }
+  }
+
   const waking = autoWakeOn();
   if (waking) wakeEngine("say");
   return { ok: true, seq: ev.seq, queued: session.pending.length, waking };
 }
+
+async function sessionCodex(enabled) {
+  if (!hostReady()) err(503, "DSH 客户端 agent 未连接，无法切换 Codex 模式");
+  const r = await hostCall("hostCodexSet", { enabled: !!enabled }, 20000);
+  hostCodex = !!(r && r.enabled);
+  broadcastStatus();
+  appendEvent("system", { text: hostCodex ? "🧩 Codex 模式：开（与客户端同步）" : "🧩 Codex 模式：关（与客户端同步）" });
+  return { ok: true, enabled: hostCodex, result: r && r.result };
+}
+
+async function sessionStop() {
+  if (hostReady() && active.sessionId) {
+    try {
+      await hostCall("hostStop", { sessionId: active.sessionId });
+      hostRunning = false;
+      broadcastStatus();
+      appendEvent("system", { text: "⏹ 已停止当前会话" });
+      return { ok: true, host: true };
+    } catch (e) {
+      appendEvent("system", { text: "⚠ 停止失败：" + String(e.message || e).slice(0, 300) });
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+  if (worker.child && worker.running) {
+    worker.killing = true;
+    try { execFile("taskkill", ["/pid", String(worker.child.pid), "/T", "/F"], () => {}); } catch {}
+    appendEvent("system", { text: "⏹ 已停止无头 DSH 工作进程" });
+    return { ok: true, host: false };
+  }
+  return { ok: false, error: "没有正在运行的会话" };
+}
+
 
 function sessionClaim() {
   const instructions = session.pending.splice(0, session.pending.length);
@@ -1456,6 +1640,8 @@ function blocksText(content) {
 function isInjectedUserText(t) {
   return t.includes(ENGINE_PROMPT_MARKER)
     || /^Current runtime context\./.test(t)
+    || /^Time sampled while/.test(t)
+    || /^Browser time zone/.test(t)
     || /^Tokens prefixed with @/.test(t)
     || /^<system-reminder>/.test(t)
     || /^You are an AI agent powered by DeepSeek Harness/.test(t)
@@ -1472,6 +1658,8 @@ function projectSessionEvent(o) {
     case "user/message": {
       const text = blocksText(d.content).trim();
       if (!text || isInjectedUserText(text)) return;
+      const echoAt = hostEcho.get(text);
+      if (echoAt && Date.now() - echoAt < 20000) { hostEcho.delete(text); return; }
       appendEvent("user", { text: text.slice(0, 4000) });
       return;
     }
@@ -1492,6 +1680,10 @@ function projectSessionEvent(o) {
       return;
     }
     case "tool/call": {
+      if (d.name === "ask_user_question") {
+        appendEvent("system", { text: "⚠ 客户端正在等待你回答一个问题；请到 DSH 客户端回答，或点停止。" });
+        return;
+      }
       let args = d.arguments;
       try { args = typeof args === "string" ? JSON.parse(args) : args; } catch {}
       const brief = summarizeInput(args);
@@ -1521,6 +1713,170 @@ function projectSessionEvent(o) {
       return;
     default:
       return;
+  }
+}
+
+// ---- 桌面客户端实时帧（follow: snapshot / event / assistant-stream） ----
+const hostStream = { attemptId: "", turn: 0, step: 0, text: "", think: "", streamId: "", usage: null };
+
+// 把逐 token 的增量合并成 ~40ms 一批，避免侧边栏日志被拆成几百条
+const streamBuf = { streamId: "", kind: "", text: "", timer: null };
+function flushStreamBuf() {
+  if (streamBuf.timer) { clearTimeout(streamBuf.timer); streamBuf.timer = null; }
+  if (streamBuf.streamId && streamBuf.text) {
+    appendEvent(streamBuf.kind, { streamId: streamBuf.streamId, text: streamBuf.text });
+  }
+  streamBuf.streamId = "";
+  streamBuf.kind = "";
+  streamBuf.text = "";
+}
+function queueStreamDelta(streamId, kind, text) {
+  if (streamBuf.streamId && (streamBuf.streamId !== streamId || streamBuf.kind !== kind)) flushStreamBuf();
+  streamBuf.streamId = streamId;
+  streamBuf.kind = kind;
+  streamBuf.text += text;
+  if (!streamBuf.timer) streamBuf.timer = setTimeout(flushStreamBuf, 40);
+}
+
+function resetHostStream() {
+  hostStream.attemptId = "";
+  hostStream.turn = 0;
+  hostStream.step = 0;
+  hostStream.text = "";
+  hostStream.think = "";
+  hostStream.streamId = "";
+  hostStream.usage = null;
+}
+
+function extSupportsStream() {
+  const v = String(ext?.hello?.extVersion || "0");
+  const [maj, min] = v.split(".").map((n) => Number(n) || 0);
+  return maj > 1 || (maj === 1 && min >= 3);
+}
+
+function projectHostAssistant(o) {
+  flushStreamBuf();
+  const d = o.data || {};
+  const blocks = d.message?.content || [];
+  const text = blocksText(blocks).trim();
+  const think = blocks.filter((b) => b && b.type === "reasoning").map((b) => String(b.text || "")).join("").trim();
+  const streamed = !!hostStream.streamId && (hostStream.text !== "" || hostStream.think !== "");
+  const streamUI = extSupportsStream();
+
+  if (text) {
+    if (streamed && streamUI) {
+      appendEvent("assistant_final", {
+        streamId: hostStream.streamId,
+        text: text.slice(0, 8000),
+        usage: d.usage || hostStream.usage || null,
+      });
+    } else {
+      appendEvent("assistant", { text: text.slice(0, 8000) });
+    }
+    live.sawText = true;
+    mirrorState.sawAssistant = true;
+  }
+  if (think && (!hostStream.think || !streamUI)) {
+    appendEvent("thinking", { text: think.slice(0, 4000) });
+  }
+  if (hostStream.streamId && streamUI) {
+    appendEvent("stream_end", { streamId: hostStream.streamId });
+  }
+  resetHostStream();
+}
+
+function handleHostFrame(sessionId, frame) {
+  if (!frame || !frame.type) return;
+  if (sessionId && active.sessionId && String(sessionId) !== String(active.sessionId)) return;
+  if (frame.type !== "assistant-stream") flushStreamBuf();
+
+  if (frame.type === "snapshot") {
+    if (frame.header?.id && !active.sessionId) {
+      active.sessionId = String(frame.header.id);
+      active.title = titleOf(active.sessionId) || "";
+      active.path = findSessionFile(active.sessionId);
+      saveActive();
+    }
+    const before = active.lastSeq;
+    const cursor = Number(frame.cursor || 0);
+    if (Number.isFinite(cursor)) active.lastSeq = Math.max(active.lastSeq, cursor);
+    for (const rec of frame.records || []) {
+      const ev = rec && rec.type === "event" ? rec.event : rec;
+      if (!ev || !Number.isFinite(ev.seq)) continue;
+      if (ev.seq <= before) continue;
+      try {
+        if (ev.type === "assistant/message") projectHostAssistant(ev);
+        else projectSessionEvent(ev);
+        active.lastSeq = Math.max(active.lastSeq, ev.seq);
+      } catch {}
+    }
+    return;
+  }
+
+  if (frame.type === "event") {
+    const ev = frame.event;
+    if (!ev || !Number.isFinite(ev.seq)) return;
+    if (ev.seq <= active.lastSeq) return;
+    active.lastSeq = ev.seq;
+
+    if (ev.type === "user/message") {
+      const text = blocksText(ev.data?.content).trim();
+      const echoAt = hostEcho.get(text);
+      if (echoAt && Date.now() - echoAt < 20000) {
+        hostEcho.delete(text);
+        return;
+      }
+    }
+    if (ev.type === "turn/start") {
+      hostRunning = true;
+      broadcastStatus();
+    }
+    if (ev.type === "assistant/message") {
+      projectHostAssistant(ev);
+      return;
+    }
+    if (ev.type === "turn/end") {
+      hostRunning = false;
+      if (ev.data?.reason?.kind === "aborted") {
+        appendEvent("system", { text: "⏹ 会话已停止" });
+      }
+      broadcastStatus();
+    }
+    try { projectSessionEvent(ev); } catch {}
+    return;
+  }
+
+  if (frame.type === "assistant-stream") {
+    const f = frame.frame || {};
+    if (f.type === "start") {
+      resetHostStream();
+      hostStream.attemptId = String(f.attemptId || "");
+      hostStream.turn = f.turn || 0;
+      hostStream.step = f.step || 0;
+      hostStream.streamId = `${active.sessionId || "s"}:${f.turn || 0}:${f.step || 0}:${f.attemptId || ""}`;
+      return;
+    }
+    if (f.type === "chunk") {
+      const c = f.chunk || {};
+      if (c.type === "text-delta" && typeof c.text === "string" && c.text) {
+        hostStream.text += c.text;
+        queueStreamDelta(hostStream.streamId, "assistant_delta", c.text);
+      } else if (c.type === "reasoning-delta" && typeof c.text === "string" && c.text) {
+        hostStream.think += c.text;
+        queueStreamDelta(hostStream.streamId, "thinking_delta", c.text);
+      } else if (c.type === "usage" && c.usage) {
+        hostStream.usage = c.usage;
+      }
+      return;
+    }
+    if (f.type === "end") {
+      flushStreamBuf();
+      if (f.outcome?.kind === "abandoned") {
+        if (hostStream.streamId) appendEvent("stream_end", { streamId: hostStream.streamId });
+        resetHostStream();
+      }
+      return;
+    }
   }
 }
 
@@ -1613,22 +1969,66 @@ function mirrorPoll() {
   mirrorState.lastPollAt = Date.now();
 }
 
-function selectSession(id) {
+function mergedSessions(refresh = false) {
+  const base = listSessions(refresh);
+  const byId = new Map(base.map((s) => [String(s.id), s]));
+  for (const h of hostSessionsCache) {
+    const id = String(h.sessionId || "");
+    if (!id) continue;
+    const running = h.running === true;
+    const existing = byId.get(id);
+    if (existing) {
+      existing.running = running;
+      existing.agentAvailable = h.agentAvailable === true;
+      if (active.sessionId === id) existing.current = true;
+      continue;
+    }
+    byId.set(id, {
+      id,
+      title: titleOf(id) || "DSH 客户端会话",
+      updatedAt: Number(h.updatedAt) || Date.now(),
+      size: 0,
+      model: active.sessionId === id ? (active.model || "") : "",
+      current: active.sessionId === id,
+      running,
+      agentAvailable: h.agentAvailable === true,
+    });
+  }
+  return [...byId.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function setActiveSession(id, title = "") {
+  active.sessionId = id;
+  active.title = title || titleOf(id) || "";
+  active.model = "";
+  active.path = findSessionFile(id);
+  active.lastSeq = 0;
+  active.lastSize = -1;
+  active.lastMtime = 0;
+  saveActive();
+}
+
+async function selectSession(id) {
   if (!id || typeof id !== "string") err(400, "select 需要 id");
+
+  if (hostReady()) {
+    setActiveSession(id);
+    resetEventStream();
+    appendEvent("system", {
+      text: `🔗 已切换到 DSH 客户端会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（同一 Agent，实时同步）`,
+    });
+    await hostCall("hostFollow", { sessionId: id });
+    log("session selected via desktop host:", id);
+    return activeInfo();
+  }
+
   const file = findSessionFile(id);
   if (!file) err(404, "会话不存在：" + id);
   const header = readSessionHeader(file);
   if (normCwd(header.cwd) !== normCwd(engineCwd())) {
     err(400, `该会话的工作目录是 ${header.cwd}，与桥接引擎（${engineCwd()}）不一致，无法接力`);
   }
-  active.sessionId = id;
-  active.title = titleOf(id) || "";
-  active.model = "";
-  active.path = file;
-  active.lastSeq = 0;
-  active.lastSize = -1;
-  active.lastMtime = 0;
-  saveActive();
+  setActiveSession(id);
   resetEventStream();
   appendEvent("system", {
     text: `🔗 已切换到 DSH 会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（DSH 与侧边栏双向同步）`,
@@ -1638,7 +2038,20 @@ function selectSession(id) {
   return activeInfo();
 }
 
-function newActiveSession() {
+async function newActiveSession() {
+  if (hostReady()) {
+    try {
+      const created = await hostCall("hostCreate", {});
+      const id = String(created.sessionId || "");
+      resetEventStream();
+      setActiveSession(id);
+      appendEvent("system", { text: "🆕 已在 DSH 客户端新建会话（客户端立即可见）" });
+      if (id) await hostCall("hostFollow", { sessionId: id });
+      return activeInfo();
+    } catch (e) {
+      appendEvent("system", { text: "⚠ 新建客户端会话失败：" + String(e.message || e).slice(0, 300) });
+    }
+  }
   active.sessionId = null;
   active.title = "";
   active.model = "";
@@ -1664,6 +2077,12 @@ function sessionStatusPayload() {
     configuredModel: enginesCfg.dsh.model,
     models: modelCatalog(),
     session: activeInfo(),
+    host: {
+      connected: hostReady(),
+      running: !!hostRunning,
+      codex: !!hostCodex,
+      sessions: hostSessionsCache.length,
+    },
     worker: worker.running ? { running: true, startedAt: worker.startedAt, elapsedMs: Date.now() - worker.startedAt } : { running: false },
   };
 }
@@ -1856,6 +2275,12 @@ async function route(method, pathname, q, body, res) {
         hello: ext.hello,
       } : { connected: false, authenticated: false },
       engine: engineInfo(),
+      host: {
+        connected: hostReady(),
+        running: !!hostRunning,
+        codex: !!hostCodex,
+        sessions: hostSessionsCache.length,
+      },
       session: { pending: session.pending.length, events: session.events.length, now: session.nextSeq },
     } };
   }
@@ -1945,16 +2370,18 @@ async function route(method, pathname, q, body, res) {
     err(404, `unknown action: ${method} ${pathname}`);
   }
 
-  if (pathname === "/session/say" && method === "POST") return { json: sessionSay(body.text) };
+  if (pathname === "/session/say" && method === "POST") return { json: await sessionSay(body.text) };
+  if (pathname === "/session/stop" && method === "POST") return { json: await sessionStop() };
+  if (pathname === "/session/codex" && method === "POST") return { json: await sessionCodex(body.enabled) };
   if (pathname === "/session/claim" && method === "POST") return { json: sessionClaim() };
   if (pathname === "/session/post" && method === "POST") return { json: sessionPost(body.kind, body) };
   if (pathname === "/session/events" && method === "GET") return { json: sessionEvents(Number(q.get("since") || 0)) };
-  if (pathname === "/session/reset" && method === "POST") return { json: newActiveSession() };
-  if (pathname === "/session/new" && method === "POST") return { json: newActiveSession() };
-  if (pathname === "/session/select" && method === "POST") return { json: selectSession(body.id) };
+  if (pathname === "/session/reset" && method === "POST") return { json: await newActiveSession() };
+  if (pathname === "/session/new" && method === "POST") return { json: await newActiveSession() };
+  if (pathname === "/session/select" && method === "POST") return { json: await selectSession(body.id) };
   if (pathname === "/session/status" && method === "GET") return { json: sessionStatusPayload() };
   if (pathname === "/sessions" && method === "GET") {
-    return { json: { sessions: listSessions(q.get("refresh") === "1"), current: active.sessionId, cwd: engineCwd() } };
+    return { json: { sessions: mergedSessions(q.get("refresh") === "1"), current: active.sessionId, cwd: engineCwd(), host: hostReady() } };
   }
   if (pathname === "/models" && method === "GET") return { json: modelsInfo() };
   if (pathname === "/engine/model" && method === "POST") return { json: setModel(String(body.model || "")) };
@@ -1972,12 +2399,16 @@ async function route(method, pathname, q, body, res) {
 async function handleExtRequest(method, params) {
   log(`ext request: ${method}` + (method === "sessionSay" ? ` text=${String(params.text || "").slice(0, 40)}` : ""));
   switch (method) {
-    case "sessionSay": return sessionSay(params.text);
+    case "sessionSay": return await sessionSay(params.text);
+    case "sessionStop": return await sessionStop();
+    case "sessionCodex": return await sessionCodex(params.enabled);
     case "sessionEvents": return sessionEvents(Number(params.since || 0));
     case "sessionStatus": return sessionStatusPayload();
-    case "sessions": return { sessions: listSessions(params.refresh === true), current: active.sessionId, cwd: engineCwd() };
-    case "sessionSelect": return selectSession(String(params.id || ""));
-    case "sessionNew": return newActiveSession();
+    case "sessions": {
+      return { sessions: mergedSessions(params.refresh === true), current: active.sessionId, cwd: engineCwd(), host: hostReady() };
+    }
+    case "sessionSelect": return await selectSession(String(params.id || ""));
+    case "sessionNew": return await newActiveSession();
     case "models": return modelsInfo();
     case "setModel": return setModel(String(params.model || ""));
     default: err(404, "unknown ext request: " + method);

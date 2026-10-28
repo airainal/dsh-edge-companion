@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.4.0 — 2026-10-28
+
+- 新增 **`dsh-agent-host`** 宿主插件：侧边栏直接驱动客户端**同一个** `sessionController`，不再另起 agent；
+  - `prompt` 提交普通用户消息、`follow` 转发 durable 事件 + `assistant-stream` 文本/思考增量、`cancel` 停止同一 turn；
+  - 侧边栏与客户端实时同步（逐字），停止状态一致；Codex 模式/权限/模型/上下文完全一致；
+  - 侧边栏新增 **Codex 徽标 + 开关**，通过 `/codex-mode on|off` 与客户端全局状态双向同步。
+- 侧边栏新增 **停止按钮**，执行中显示，调用同一个 `sessionController.cancel`。
+- 桥接新增宿主通道与校验：多插件实例重连时用 `hostPing` 验活，只接纳 active context；旧连接只切换不关闭，避免重连风暴。
+- 会话列表合并客户端 live 会话（不再受 headless cwd 过滤）；`ask_user_question` 会在侧边栏提示回客户端回答。
+- 扩展 1.3.0、桥接 1.2.0、安装包 1.4.0（含 Word 教程与两个插件）。
+
 ## v1.3.0 — 2026-10-24
 
 - 新增 **DSH 宿主插件** `dsh-plugin/`：随 DeepSeek Harness 启动自动拉起桥接（零操作）；
