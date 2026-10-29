@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "DSH Agent Host",
-    "description": "Connects the Edge side panel to the live desktop Session Controller, so both surfaces drive the same Agent and Codex mode."
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "DSH Agent Host",
-    "description": "把 Edge 侧边栏接到桌面端的 Session Controller：同一 Agent、同一 Codex 模式，不再另起无头会话。"
-  }
-}
