@@ -3,8 +3,8 @@ import path from "node:path";
 
 const root = path.resolve(process.argv[2] || ".");
 const html = fs.readFileSync(path.join(root, "extension", "sidepanel.html"), "utf8");
-const css = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.2.css"), "utf8");
-const js = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.2.js"), "utf8");
+const css = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.3.css"), "utf8");
+const js = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.3.js"), "utf8");
 const body = html.match(/<body>([\s\S]*?)<\/body>/)[1].replace(/<script[\s\S]*?<\/script>/g, "");
 
 const mk = (text) => ({ text, chunks: text.match(/.{1,6}/gs) || [text] });

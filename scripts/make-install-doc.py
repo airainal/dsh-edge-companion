@@ -294,7 +294,7 @@ def build():
     t4 = doc.add_paragraph()
     t4.alignment = WD_ALIGN_PARAGRAPH.CENTER
     t4.paragraph_format.space_before = Pt(42)
-    r = t4.add_run("版本 1.4.2    |    2026 年 10 月")
+    r = t4.add_run("版本 1.4.3    |    2026 年 10 月")
     set_run(r, CN, 10.5, False, DIM)
 
     t5 = doc.add_paragraph()
@@ -331,7 +331,7 @@ def build():
             ["操作系统", "Windows 10 / 11", "插件与启动器均为 Windows 专用"],
             ["浏览器", "Microsoft Edge 114 或更高", "商店版即可，edge://version 可查看版本"],
             ["DeepSeek Harness", "已安装并已登录", "侧边栏的自动执行依赖它；只做 CDP 也需安装"],
-            ["安装包", "dsh-edge-companion-1.4.2.zip", "解压后保持目录完整，不要只拷单个文件"],
+            ["安装包", "dsh-edge-companion-1.4.3.zip", "解压后保持目录完整，不要只拷单个文件"],
         ],
         [3.2, 4.8, 9.0],
     )
@@ -361,14 +361,14 @@ def build():
     para(doc, "整个安装过程只需三件事：解压、加载 Edge 扩展、在 DSH 中安装插件。全程不需要命令行。", 10.5, False, INK)
 
     heading(doc, "2.1  解压安装包", 2)
-    step(doc, "把 dsh-edge-companion-1.4.2.zip 解压到任意目录（路径可以包含空格或中文）。")
+    step(doc, "把 dsh-edge-companion-1.4.3.zip 解压到任意目录（路径可以包含空格或中文）。")
     step(doc, "建议不要放在 C:\\ 根目录；解压后应能看到 extension、bridge、dsh-plugin 等文件夹。")
 
     heading(doc, "2.2  加载 Edge 扩展（必做）", 2)
     step(doc, "打开 Edge，在地址栏输入 edge://extensions 并回车。")
     step(doc, "打开左下角的「开发人员模式」开关。")
     step(doc, "点击页面上方的「加载解压缩的扩展」，选择解压出来的 extension 文件夹。")
-    step(doc, "看到 DSH Edge Bridge 1.3.2（蓝发鲸鱼少女图标）即安装成功。")
+    step(doc, "看到 DSH Edge Bridge 1.3.3（蓝发鲸鱼少女图标）即安装成功。")
     para(
         doc,
         "扩展 ID 由 manifest.json 里的 key 固定（kioclakapkblemfnlgcfbciedfhkpmhc），换路径、换电脑都不会变。",

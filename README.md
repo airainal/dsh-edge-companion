@@ -7,7 +7,7 @@
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D4.svg">
   <img alt="Edge 114+" src="https://img.shields.io/badge/Edge-114%2B-4D6BFE.svg">
   <img alt="DeepSeek Harness" src="https://img.shields.io/badge/DeepSeek%20Harness-plugin-6C5CE7.svg">
-  <img alt="Release" src="https://img.shields.io/badge/release-v1.4.2-22C55E.svg">
+  <img alt="Release" src="https://img.shields.io/badge/release-v1.4.3-22C55E.svg">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   不用重启浏览器，不用 <code>--remote-debugging-port</code>，侧边栏就是 DSH 的会话镜像。
 </p>
 
-<p align="center"><i>Releases 里的 <code>dsh-edge-companion-1.4.2.zip</code> 是可直接分发的一键包，安装教程也在包里。</i></p>
+<p align="center"><i>Releases 里的 <code>dsh-edge-companion-1.4.3.zip</code> 是可直接分发的一键包，安装教程也在包里。</i></p>
 
 ---
 
@@ -156,11 +156,11 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-plugin 宿主
 
 ### 第 1 步：加载 Edge 扩展
 
-1. 解压 `dsh-edge-companion-1.4.2.zip` 到任意目录（路径含空格/中文都可以，**保持目录完整**）；
+1. 解压 `dsh-edge-companion-1.4.3.zip` 到任意目录（路径含空格/中文都可以，**保持目录完整**）；
 2. Edge 地址栏打开 `edge://extensions`；
 3. 打开左下角 **「开发人员模式」**；
 4. 点 **「加载解压缩的扩展」**，选择解压出来的 `extension` 文件夹；
-5. 出现 **DSH Edge Bridge 1.3.2**（蓝发鲸鱼少女图标）即成功。
+5. 出现 **DSH Edge Bridge 1.3.3**（蓝发鲸鱼少女图标）即成功。
 
 > 扩展 ID 由 `manifest.json` 的 `key` 固定（`kioclakapkblemfnlgcfbciedfhkpmhc`），换路径/换机器都不变。
 

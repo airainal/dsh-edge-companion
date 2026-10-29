@@ -301,23 +301,38 @@ details.tool summary.fail { color: #b42318; }
 }
 .model-bar .dd { flex: 1 1 auto; min-width: 0; max-width: none; }
 .picker-trigger {
-  display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
-  height: 28px; padding: 0 6px; border: 0; background: transparent; cursor: pointer;
-  color: var(--accent); border-radius: 7px;
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
+  height: 32px; padding: 0 12px; border: 0; cursor: pointer;
+  color: var(--accent); border-radius: 12px; background: #f7f8fc;
+  box-shadow: 4px 4px 10px rgba(150, 165, 190, .38), -4px -4px 10px rgba(255, 255, 255, 1), inset 0 1px 0 rgba(255, 255, 255, .95);
   font: 12.5px "Segoe UI", "Microsoft YaHei", sans-serif;
+  transition: box-shadow .16s ease, color .16s ease;
 }
-.picker-trigger:hover { background: var(--card-2); }
+.picker-trigger:hover {
+  box-shadow: 5px 5px 12px rgba(150, 165, 190, .44), -5px -5px 12px rgba(255, 255, 255, 1), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+.picker-trigger:active,
+.dd.open .picker-trigger {
+  box-shadow: inset 2px 2px 6px rgba(150, 165, 190, .4), inset -2px -2px 6px rgba(255, 255, 255, .95);
+}
 .picker-trigger-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .picker-trigger-effort { color: var(--dim); flex: 0 0 auto; font-size: 11.5px; }
 .picker-trigger-effort.hidden { display: none; }
 .picker-trigger .dd-chev { width: 12px; height: 12px; color: var(--dim); flex: 0 0 auto; }
-.picker-menu { left: 0; right: auto; width: 272px; min-width: 0; padding: 5px; }
+.picker-menu {
+  left: 0; right: auto; width: 272px; min-width: 0; padding: 6px;
+  border: 0; border-radius: 14px; background: var(--bg);
+  box-shadow: 7px 7px 18px rgba(163, 177, 198, .42), -7px -7px 18px rgba(255, 255, 255, .95);
+}
 .picker-row {
   width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 9px;
-  border: 0; background: transparent; border-radius: 8px; cursor: pointer; text-align: left;
+  border: 0; background: transparent; border-radius: 9px; cursor: pointer; text-align: left;
   color: var(--fg); font: 12.5px "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-.picker-row:hover { background: var(--card-2); }
+.picker-row:hover, .picker-back:hover, .picker-item:hover {
+  background: rgba(255, 255, 255, .58);
+  box-shadow: inset 1px 1px 3px rgba(163, 177, 198, .25), inset -1px -1px 3px rgba(255, 255, 255, .85);
+}
 .picker-key { flex: 0 0 auto; }
 .picker-value { flex: 1 1 auto; text-align: right; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-chev { flex: 0 0 auto; color: var(--dim-2); font-size: 14px; }
@@ -326,14 +341,14 @@ details.tool summary.fail { color: #b42318; }
   border: 0; background: transparent; border-radius: 6px; cursor: pointer; text-align: left;
   color: var(--dim); font: 11.5px "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-.picker-back:hover { background: var(--card-2); }
+.picker-back:hover { background: rgba(255, 255, 255, .58); }
 .picker-group-title { color: var(--dim-2); font-size: 11px; padding: 8px 9px 3px; }
 .picker-item {
   width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px;
   border: 0; background: transparent; border-radius: 8px; cursor: pointer; text-align: left;
   color: var(--fg); font: 12.5px "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-.picker-item:hover { background: var(--card-2); }
+.picker-item:hover { background: rgba(255, 255, 255, .58); }
 .picker-item .t { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-item .check { flex: 0 0 auto; color: var(--accent); font-size: 12px; }
 .picker-item.current { font-weight: 600; }
