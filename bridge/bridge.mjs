@@ -29,7 +29,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.2.4";
+const VERSION = "1.2.5";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
