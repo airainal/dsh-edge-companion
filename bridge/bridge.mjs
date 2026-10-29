@@ -29,7 +29,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.2.3";
+const VERSION = "1.2.4";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -184,6 +184,7 @@ let hostCodex = false;
 let hostSessionsCache = [];
 let hostModel = null;        // { provider, model, reasoningEffort? }
 let hostCatalog = null;      // normalized catalog from the desktop client
+let hostCatalogJson = "";    // change detector for engine broadcasts
 const loadEvents = new Map(); // tabId -> 最近一次 Page.loadEventFired 的本地时间戳
 
 function attachExtension(conn) {
@@ -1509,12 +1510,15 @@ function modelsInfo() {
 }
 
 async function refreshHostModels() {
-  if (!hostReady()) { hostCatalog = null; hostModel = null; return null; }
+  if (!hostReady()) { hostCatalog = null; hostModel = null; hostCatalogJson = ""; return null; }
   try {
-    const r = await hostCall("hostModels", {}, 20000);
+    const r = await hostCall("hostModels", { force: true }, 20000);
+    const nextJson = JSON.stringify((r && r.catalog) || null);
+    const changed = nextJson !== hostCatalogJson;
     if (r && r.catalog) hostCatalog = r.catalog;
     if (r && r.current) hostModel = r.current;
-    broadcastEngine();
+    hostCatalogJson = nextJson;
+    if (changed) broadcastEngine();
     broadcastStatus();
     return r;
   } catch (e) {
@@ -2471,7 +2475,10 @@ async function route(method, pathname, q, body, res) {
   if (pathname === "/sessions" && method === "GET") {
     return { json: { sessions: mergedSessions(q.get("refresh") === "1"), current: active.sessionId, cwd: engineCwd(), host: hostReady() } };
   }
-  if (pathname === "/models" && method === "GET") return { json: modelsInfo() };
+  if (pathname === "/models" && method === "GET") {
+    if (q.get("refresh") === "1" && hostReady()) await refreshHostModels();
+    return { json: modelsInfo() };
+  }
   if (pathname === "/engine/model" && method === "POST") return { json: await setModel(body) };
 
   if (pathname === "/shutdown" && method === "POST") {
@@ -2496,7 +2503,9 @@ async function handleExtRequest(method, params) {
     }
     case "sessionSelect": return await selectSession(String(params.id || ""));
     case "sessionNew": return await newActiveSession();
-    case "models": return modelsInfo();
+    case "models":
+      if (params && params.refresh === true && hostReady()) await refreshHostModels();
+      return modelsInfo();
     case "setModel": return await setModel(params);
     default: err(404, "unknown ext request: " + method);
   }
@@ -2569,6 +2578,11 @@ setInterval(() => {
     return;
   }
   ext.conn.sendPing();
+}, 20000).unref();
+
+// 模型目录自动同步：客户端新增 provider/模型后，20 秒内出现在侧边栏
+setInterval(() => {
+  if (hostReady()) refreshHostModels().catch(() => {});
 }, 20000).unref();
 
 process.on("uncaughtException", (e) => log("uncaughtException:", String((e && e.stack) || e)));

@@ -177,7 +177,7 @@ async function handleBridgeRequest(method, params) {
       return { sessions: items };
     }
     case "hostModels": {
-      return await hostModels();
+      return await hostModels(params.force === true);
     }
     case "hostModelSet": {
       return await hostModelSet(params);
@@ -366,8 +366,8 @@ function normalizeModelCatalog(cat) {
   return out;
 }
 
-async function hostModels() {
-  if (!modelCatalogCache.value || Date.now() - modelCatalogCache.at > 15000) {
+async function hostModels(force = false) {
+  if (force || !modelCatalogCache.value || Date.now() - modelCatalogCache.at > 15000) {
     const cat = await ctx.sessionController.modelCatalog();
     modelCatalogCache = { at: Date.now(), value: normalizeModelCatalog(cat) };
   }

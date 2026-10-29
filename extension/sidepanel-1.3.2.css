@@ -299,15 +299,45 @@ details.tool summary.fail { color: #b42318; }
   display: flex; align-items: center; gap: 6px;
   padding: 2px 2px 6px; min-width: 0;
 }
-.model-label { color: var(--dim-2); font-size: 11px; flex: 0 0 auto; }
 .model-bar .dd { flex: 1 1 auto; min-width: 0; max-width: none; }
-.model-bar #effort-dd { flex: 0 0 auto; max-width: 96px; }
-.model-bar #effort-dd.hidden { display: none; }
-#effort-dd .dd-btn { width: 100%; max-width: 100%; }
-#effort-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-bar #session-hint { display: none; }
-.model-bar .dd-menu { left: 0; right: auto; min-width: 210px; }
-#effort-dd .dd-menu { left: auto; right: 0; min-width: 150px; }
+.picker-trigger {
+  display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
+  height: 28px; padding: 0 6px; border: 0; background: transparent; cursor: pointer;
+  color: var(--accent); border-radius: 7px;
+  font: 12.5px "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.picker-trigger:hover { background: var(--card-2); }
+.picker-trigger-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.picker-trigger-effort { color: var(--dim); flex: 0 0 auto; font-size: 11.5px; }
+.picker-trigger-effort.hidden { display: none; }
+.picker-trigger .dd-chev { width: 12px; height: 12px; color: var(--dim); flex: 0 0 auto; }
+.picker-menu { left: 0; right: auto; width: 272px; min-width: 0; padding: 5px; }
+.picker-row {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 9px;
+  border: 0; background: transparent; border-radius: 8px; cursor: pointer; text-align: left;
+  color: var(--fg); font: 12.5px "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.picker-row:hover { background: var(--card-2); }
+.picker-key { flex: 0 0 auto; }
+.picker-value { flex: 1 1 auto; text-align: right; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-chev { flex: 0 0 auto; color: var(--dim-2); font-size: 14px; }
+.picker-back {
+  width: 100%; display: flex; align-items: center; padding: 6px 8px; margin-bottom: 2px;
+  border: 0; background: transparent; border-radius: 6px; cursor: pointer; text-align: left;
+  color: var(--dim); font: 11.5px "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.picker-back:hover { background: var(--card-2); }
+.picker-group-title { color: var(--dim-2); font-size: 11px; padding: 8px 9px 3px; }
+.picker-item {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  border: 0; background: transparent; border-radius: 8px; cursor: pointer; text-align: left;
+  color: var(--fg); font: 12.5px "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.picker-item:hover { background: var(--card-2); }
+.picker-item .t { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-item .check { flex: 0 0 auto; color: var(--accent); font-size: 12px; }
+.picker-item.current { font-weight: 600; }
+.picker-item.current .t { color: var(--accent); }
 .session-hint {
   flex: 1 1 auto; min-width: 0; text-align: right;
   color: var(--dim-2); font-size: 10.5px;

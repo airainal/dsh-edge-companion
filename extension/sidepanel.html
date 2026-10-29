@@ -40,22 +40,36 @@
 
       <div class="composer">
         <div class="model-bar">
-          <span class="model-label">模型</span>
-          <div class="dd dd-up" id="model-dd">
-            <button class="dd-btn dd-btn-sm" id="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
-              <span class="dd-label" id="model-label">模型</span>
+          <div class="dd dd-up picker" id="model-dd">
+            <button class="picker-trigger" id="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="picker-trigger-model" id="model-label">模型</span>
+              <span class="picker-trigger-effort hidden" id="effort-label"></span>
               <svg class="dd-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.4 8 10.4l4-4" /></svg>
             </button>
-            <div class="dd-menu" id="model-menu" role="listbox"></div>
+            <div class="dd-menu picker-menu" id="model-menu">
+              <div id="picker-root">
+                <button class="picker-row" id="pick-model" type="button">
+                  <span class="picker-key">模型</span>
+                  <span class="picker-value" id="pick-model-value"></span>
+                  <span class="picker-chev">›</span>
+                </button>
+                <button class="picker-row" id="pick-effort" type="button">
+                  <span class="picker-key">推理等级</span>
+                  <span class="picker-value" id="pick-effort-value"></span>
+                  <span class="picker-chev">›</span>
+                </button>
+              </div>
+              <div id="picker-models" class="hidden">
+                <button class="picker-back" id="picker-back-models" type="button">‹ 模型</button>
+                <div id="model-groups"></div>
+              </div>
+              <div id="picker-efforts" class="hidden">
+                <button class="picker-back" id="picker-back-efforts" type="button">‹ 推理等级</button>
+                <div id="effort-list"></div>
+              </div>
+            </div>
           </div>
-          <div class="dd dd-up dd-small hidden" id="effort-dd">
-            <button class="dd-btn dd-btn-sm" id="effort-btn" type="button" aria-haspopup="listbox" aria-expanded="false" title="推理等级">
-              <span class="dd-label" id="effort-label">推理</span>
-              <svg class="dd-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.4 8 10.4l4-4" /></svg>
-            </button>
-            <div class="dd-menu" id="effort-menu" role="listbox"></div>
-          </div>
-          <span id="session-hint" class="session-hint"></span>
+          <span id="session-hint" class="session-hint hidden"></span>
         </div>
         <div id="pending" class="pending hidden">⏳ 待 DSH 领取…</div>
         <div class="input-pill">

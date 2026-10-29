@@ -123,7 +123,7 @@ chrome.runtime.onConnect.addListener((port) => {
     // ---- 模型切换（无头引擎使用）----
     if (m.type === "getModels") {
       try {
-        const r = await bridgeCall("models", {});
+        const r = await bridgeCall("models", { refresh: m.refresh === true }, 25000);
         port.postMessage({ type: "models", ...r });
       } catch {}
     }

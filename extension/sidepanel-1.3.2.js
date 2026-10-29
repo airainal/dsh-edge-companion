@@ -156,6 +156,20 @@ function effortName(item, id) {
   return hit ? (hit.name || hit.id) : id;
 }
 
+function displayProvider(item) {
+  const raw = item.providerName || item.provider || "";
+  return raw === "DeepSeek Account" ? "DeepSeek 账号" : raw;
+}
+
+let pickerPage = "root";
+
+function setPickerPage(page) {
+  pickerPage = page;
+  $("picker-root").classList.toggle("hidden", page !== "root");
+  $("picker-models").classList.toggle("hidden", page !== "models");
+  $("picker-efforts").classList.toggle("hidden", page !== "efforts");
+}
+
 function renderModels(m) {
   if (!m || !Array.isArray(m.models)) return;
   models = m.models;
@@ -169,59 +183,74 @@ function renderModels(m) {
     if (m.selected) currentModel = m.selected;
   }
 
-  const menu = $("model-menu");
-  menu.innerHTML = "";
-  const providerCount = new Set(models.map((x) => x.provider || "")).size;
-  for (const item of models) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.setAttribute("role", "option");
-    const chosen = modelMatches(item);
-    b.className = "dd-item" + (chosen ? " current" : "");
-    b.innerHTML = '<span class="t"></span><span class="check"></span>';
-    const label = (providerCount > 1 && item.providerName ? item.providerName + " · " : "") + (item.label || item.id);
-    b.querySelector(".t").textContent = label;
-    b.title = item.description || label;
-    b.querySelector(".check").textContent = chosen ? "✓" : "";
-    b.addEventListener("click", () => {
-      closeMenus();
-      currentProvider = item.provider || "";
-      currentModel = item.id;
-      currentEffort = (item.reasoning && item.reasoning.defaultEffort) || "";
-      $("model-label").textContent = item.label || item.id;
-      const msg = { type: "setModel", provider: item.provider, model: item.id };
-      if (currentEffort) msg.reasoningEffort = currentEffort;
-      port.postMessage(msg);
-      renderModels({ models, current: { provider: currentProvider, model: currentModel, reasoningEffort: currentEffort } });
-    });
-    menu.appendChild(b);
-  }
   const curItem = models.find(modelMatches);
-  $("model-label").textContent = curItem ? (curItem.label || curItem.id) : (currentModel || "模型");
-  renderEffort(curItem);
-  updateDisabled();
-}
+  const efforts = curItem && curItem.reasoning && Array.isArray(curItem.reasoning.efforts) ? curItem.reasoning.efforts : [];
+  const effective = currentEffort || (curItem && curItem.reasoning && curItem.reasoning.defaultEffort) || "";
+  const effectiveName = effortName(curItem, effective);
+  const modelName = curItem ? (curItem.label || curItem.id) : (currentModel || "模型");
 
-function renderEffort(curItem) {
-  const item = curItem || models.find(modelMatches);
-  const efforts = item && item.reasoning && Array.isArray(item.reasoning.efforts) ? item.reasoning.efforts : [];
-  const dd = $("effort-dd");
-  const menu = $("effort-menu");
-  if (!menu || !dd) return;
-  menu.innerHTML = "";
-  if (!efforts.length) {
-    dd.classList.add("hidden");
-    return;
+  // trigger: model + effort, like the client composer
+  $("model-label").textContent = modelName;
+  $("model-btn").title = modelName + (effectiveName ? " · " + effectiveName : "");
+  const effortEl = $("effort-label");
+  effortEl.textContent = effectiveName;
+  effortEl.classList.toggle("hidden", !effectiveName);
+
+  // root rows
+  $("pick-model-value").textContent = modelName;
+  $("pick-effort-value").textContent = effectiveName || "默认";
+  $("pick-effort").classList.toggle("hidden", !efforts.length);
+
+  // grouped model list
+  const groups = [];
+  const byProvider = new Map();
+  for (const item of models) {
+    const key = item.provider || "";
+    if (!byProvider.has(key)) {
+      const group = { id: key, name: displayProvider(item), models: [] };
+      byProvider.set(key, group);
+      groups.push(group);
+    }
+    byProvider.get(key).models.push(item);
   }
-  dd.classList.remove("hidden");
-  const effective = currentEffort || (item.reasoning.defaultEffort || "");
-  $("effort-label").textContent = effortName(item, effective) || "默认";
-  $("effort-btn").title = "推理等级：" + (effortName(item, effective) || "默认");
+  const groupHost = $("model-groups");
+  groupHost.innerHTML = "";
+  for (const group of groups) {
+    if (group.name) {
+      const title = document.createElement("div");
+      title.className = "picker-group-title";
+      title.textContent = group.name;
+      groupHost.appendChild(title);
+    }
+    for (const item of group.models) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "picker-item" + (modelMatches(item) ? " current" : "");
+      b.innerHTML = '<span class="t"></span><span class="check"></span>';
+      b.querySelector(".t").textContent = item.label || item.id;
+      b.title = item.description || item.label || item.id;
+      b.querySelector(".check").textContent = modelMatches(item) ? "✓" : "";
+      b.addEventListener("click", () => {
+        closeMenus();
+        currentProvider = item.provider || "";
+        currentModel = item.id;
+        currentEffort = (item.reasoning && item.reasoning.defaultEffort) || "";
+        const msg = { type: "setModel", provider: item.provider, model: item.id };
+        if (currentEffort) msg.reasoningEffort = currentEffort;
+        port.postMessage(msg);
+        renderModels({ models, current: { provider: currentProvider, model: currentModel, reasoningEffort: currentEffort } });
+      });
+      groupHost.appendChild(b);
+    }
+  }
+
+  // reasoning efforts
+  const effortHost = $("effort-list");
+  effortHost.innerHTML = "";
   for (const effort of efforts) {
     const b = document.createElement("button");
     b.type = "button";
-    b.setAttribute("role", "option");
-    b.className = "dd-item" + (effort.id === effective ? " current" : "");
+    b.className = "picker-item" + (effort.id === effective ? " current" : "");
     b.innerHTML = '<span class="t"></span><span class="check"></span>';
     b.querySelector(".t").textContent = effort.name || effort.id;
     b.title = effort.description || effort.name || effort.id;
@@ -229,17 +258,18 @@ function renderEffort(curItem) {
     b.addEventListener("click", () => {
       closeMenus();
       currentEffort = effort.id;
-      $("effort-label").textContent = effort.name || effort.id;
       port.postMessage({
         type: "setModel",
-        provider: item.provider || currentProvider,
-        model: item.id || currentModel,
+        provider: curItem ? curItem.provider : currentProvider,
+        model: curItem ? curItem.id : currentModel,
         reasoningEffort: effort.id,
       });
-      renderEffort(item);
+      renderModels({ models, current: { provider: currentProvider, model: currentModel, reasoningEffort: currentEffort } });
     });
-    menu.appendChild(b);
+    effortHost.appendChild(b);
   }
+
+  updateDisabled();
 }
 
 // ---------- 会话列表 / 选择 ----------
@@ -287,7 +317,16 @@ function refreshSessions(refresh) { port.postMessage({ type: "getSessions", refr
 
 bindDropdown("session-dd", "session-btn");
 bindDropdown("model-dd", "model-btn");
-bindDropdown("effort-dd", "effort-btn");
+
+// two-level picker: root -> model list / reasoning list
+$("pick-model").addEventListener("click", () => setPickerPage("models"));
+$("pick-effort").addEventListener("click", () => setPickerPage("efforts"));
+$("picker-back-models").addEventListener("click", () => setPickerPage("root"));
+$("picker-back-efforts").addEventListener("click", () => setPickerPage("root"));
+$("model-btn").addEventListener("click", () => {
+  setPickerPage("root");
+  port.postMessage({ type: "getModels", refresh: true });
+});
 $("btn-new-session").addEventListener("click", () => { closeMenus(); port.postMessage({ type: "newSession" }); });
 
 // ---------- 会话渲染 ----------

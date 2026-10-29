@@ -30,16 +30,23 @@ for (const state of ["running", "done"]) {
   fs.writeFileSync(file, Buffer.from(shot.data, "base64"));
   console.log("wrote", file);
 }
-// effort menu open state
-await send("Runtime.evaluate", { expression: 'document.getElementById("effort-btn").click()' });
+// root menu open state
+await send("Runtime.evaluate", { expression: 'document.getElementById("model-btn").click()' });
 await sleep(400);
+const rootShot = await send("Page.captureScreenshot", { format: "png" });
+const rootFile = path.join(root, "test", "host-picker-root.png");
+fs.writeFileSync(rootFile, Buffer.from(rootShot.data, "base64"));
+console.log("wrote", rootFile);
+// effort menu open state (root -> 推理等级)
+await send("Runtime.evaluate", { expression: 'document.getElementById("model-btn").click(); document.getElementById("pick-effort").click()' });
+await sleep(450);
 const effortShot = await send("Page.captureScreenshot", { format: "png" });
 const effortFile = path.join(root, "test", "host-effort.png");
 fs.writeFileSync(effortFile, Buffer.from(effortShot.data, "base64"));
 console.log("wrote", effortFile);
-// model menu open state
-await send("Runtime.evaluate", { expression: 'document.getElementById("effort-btn").click(); document.getElementById("model-btn").click()' });
-await sleep(400);
+// model menu open state (back -> root -> 模型)
+await send("Runtime.evaluate", { expression: 'document.getElementById("picker-back-efforts").click(); document.getElementById("pick-model").click()' });
+await sleep(450);
 const modelShot = await send("Page.captureScreenshot", { format: "png" });
 const modelFile = path.join(root, "test", "host-models.png");
 fs.writeFileSync(modelFile, Buffer.from(modelShot.data, "base64"));
