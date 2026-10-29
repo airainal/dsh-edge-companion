@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4.2 — 2026-10-29
+
+- 侧边栏模型选择改为**读取客户端真实目录**：`sessionController.modelCatalog()`，按 provider 分组展示
+  DeepSeek Account 与自定义 provider（GLM 等）的全部模型，不再写死两个。
+- 新增**推理等级**下拉（Off / Low / High / Max，按当前模型实际档位）：切换走同一个 `sessionController.selectModel`。
+- 模型/推理选择**双端同步**：侧边栏切换立即写入当前会话并保存默认；客户端切换后，宿主每 2 秒读
+  `modelSelection` projection，实时推回侧边栏。
+- 扩展 1.3.2、桥接 1.2.3、安装包 1.4.2。
+
 ## v1.4.1 — 2026-10-28
 
 - **合并回一个插件**：删除独立 `dsh-agent-host` bundle，把宿主通道并入 `dsh-plugin`（2.0.0）；

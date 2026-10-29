@@ -29,7 +29,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.2.2";
+const VERSION = "1.2.3";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -182,6 +182,8 @@ let host = null; // DSH desktop agent host (same process as the client)
 let hostRunning = false;
 let hostCodex = false;
 let hostSessionsCache = [];
+let hostModel = null;        // { provider, model, reasoningEffort? }
+let hostCatalog = null;      // normalized catalog from the desktop client
 const loadEvents = new Map(); // tabId -> 最近一次 Page.loadEventFired 的本地时间戳
 
 function attachExtension(conn) {
@@ -338,7 +340,9 @@ function adoptHost(session, msg) {
       log("desktop agent host ready, version =", session.hello.version || "?");
       broadcastStatus();
       if (active.sessionId) {
-        hostCall("hostFollow", { sessionId: active.sessionId }).catch((e) => log("initial hostFollow failed:", String(e.message || e)));
+        hostCall("hostFollow", { sessionId: active.sessionId })
+          .then(() => refreshHostModels())
+          .catch((e) => log("initial hostFollow failed:", String(e.message || e)));
       }
     })
     .catch((e) => {
@@ -386,12 +390,21 @@ function handleHostMessage(session, msg) {
     case "hostSessions":
       hostSessionsCache = Array.isArray(msg.params?.sessions) ? msg.params.sessions : [];
       return;
+    case "hostModel":
+      if (msg.params?.current) {
+        hostModel = msg.params.current;
+        broadcastEngine();
+      }
+      return;
     case "hostSession":
       if (msg.params?.sessionId) {
         active.sessionId = String(msg.params.sessionId);
         active.title = titleOf(active.sessionId) || "";
         active.path = findSessionFile(active.sessionId);
         saveActive();
+        hostModel = null;
+        refreshHostModels();
+        broadcastEngine();
       }
       return;
     case "hostError":
@@ -804,6 +817,11 @@ function broadcastStatus() {
   if (ext && !ext.conn.closed) {
     try { ext.conn.sendText(JSON.stringify({ method: "status", params: payload })); } catch {}
   }
+}
+
+function broadcastEngine() {
+  if (!ext || ext.conn.closed) return;
+  try { ext.conn.sendText(JSON.stringify({ method: "engine", params: { engine: sessionStatusPayload() } })); } catch {}
 }
 
 const hostEcho = new Map(); // sidebar text -> time, suppresses the durable user echo
@@ -1404,14 +1422,18 @@ async function runEngine(instructions, reason) {
 
 function engineInfo() {
   const r = resolveDsh();
+  const mi = modelsInfo();
   return {
     mode: enginesCfg.mode,
     autoWake: autoWakeOn(),
     profile: enginesCfg.dsh.profile,
-    provider: enginesCfg.dsh.provider,
-    model: active.model || enginesCfg.dsh.model,
+    provider: mi.provider || enginesCfg.dsh.provider,
+    model: mi.selected || active.model || enginesCfg.dsh.model,
     configuredModel: enginesCfg.dsh.model,
-    models: modelCatalog(),
+    models: mi.models,
+    modelCurrent: mi.current || null,
+    modelGroups: mi.groups || [],
+    modelFailures: mi.failures || [],
     storeAuth: !!enginesCfg.dsh.storeAuth,
     dshDetected: !r.error,
     dshExe: r.error ? "" : r.exe,
@@ -1450,13 +1472,81 @@ function modelCatalog() {
   return out;
 }
 
+function flattenHostCatalog(cat) {
+  const out = [];
+  for (const group of (cat && Array.isArray(cat.groups) ? cat.groups : [])) {
+    for (const model of (Array.isArray(group.models) ? group.models : [])) {
+      out.push({
+        id: String(model.id || ""),
+        key: String(group.id || "") + "/" + String(model.id || ""),
+        label: String(model.name || model.id || ""),
+        provider: String(group.id || ""),
+        providerName: String(group.name || group.id || ""),
+        description: model.description ? String(model.description) : "",
+        reasoning: model.reasoning || null,
+      });
+    }
+  }
+  return out;
+}
+
+function hostModelsInfo() {
+  const current = hostModel || (hostCatalog && hostCatalog.default) || {};
+  return {
+    host: true,
+    provider: current.provider || "",
+    selected: current.model || "",
+    current,
+    models: hostCatalog ? flattenHostCatalog(hostCatalog) : [],
+    groups: hostCatalog ? hostCatalog.groups || [] : [],
+    failures: hostCatalog ? hostCatalog.failures || [] : [],
+  };
+}
+
 function modelsInfo() {
+  if (hostReady() && hostCatalog) return hostModelsInfo();
   return { provider: enginesCfg.dsh.provider, selected: enginesCfg.dsh.model, models: modelCatalog() };
 }
 
-function setModel(id) {
-  const hit = modelCatalog().find((m) => m.id === id);
-  if (!hit) err(400, "未知模型：" + id + "（可选：" + modelCatalog().map((m) => m.id).join(", ") + "）");
+async function refreshHostModels() {
+  if (!hostReady()) { hostCatalog = null; hostModel = null; return null; }
+  try {
+    const r = await hostCall("hostModels", {}, 20000);
+    if (r && r.catalog) hostCatalog = r.catalog;
+    if (r && r.current) hostModel = r.current;
+    broadcastEngine();
+    broadcastStatus();
+    return r;
+  } catch (e) {
+    log("refreshHostModels failed:", String(e && e.message ? e.message : e));
+    return null;
+  }
+}
+
+async function setModel(input) {
+  const req = typeof input === "string" ? { model: input } : (input || {});
+  if (hostReady()) {
+    if (!hostCatalog) await refreshHostModels();
+    let provider = String(req.provider || (hostModel && hostModel.provider) || (hostCatalog && hostCatalog.default && hostCatalog.default.provider) || "");
+    const model = String(req.model || req.id || "");
+    if (!provider || !model) err(400, "模型切换需要 provider 和 model");
+    let reasoningEffort = req.reasoningEffort;
+    if (reasoningEffort === null || reasoningEffort === undefined || String(reasoningEffort) === "") reasoningEffort = undefined;
+    const r = await hostCall("hostModelSet", { provider, model, reasoningEffort }, 30000);
+    hostModel = (r && r.current) || { provider, model, reasoningEffort };
+    const hit = (hostCatalog ? flattenHostCatalog(hostCatalog) : []).find((m) => m.provider === hostModel.provider && m.id === hostModel.model);
+    const label = (hit && hit.label) || hostModel.model;
+    const effortName = hit && hit.reasoning && hostModel.reasoningEffort
+      ? ((hit.reasoning.efforts || []).find((e) => e.id === hostModel.reasoningEffort) || {}).name || hostModel.reasoningEffort
+      : "";
+    appendEvent("system", { text: "模型已切换为 " + label + (effortName ? " · " + effortName : "") + "（双端同步）" });
+    broadcastEngine();
+    broadcastStatus();
+    log("host model switched to", hostModel.provider + "/" + hostModel.model);
+    return modelsInfo();
+  }
+  const hit = modelCatalog().find((m) => m.id === (req.model || req.id));
+  if (!hit) err(400, "未知模型：" + (req.model || req.id) + "（可选：" + modelCatalog().map((m) => m.id).join(", ") + "）");
   enginesCfg.dsh.model = hit.id;
   saveEngines();
   try { ensureOverlay(); } catch {}
@@ -2009,6 +2099,8 @@ async function selectSession(id) {
       text: `已切换到 DSH 客户端会话${active.title ? `「${active.title}」` : ` ${id.slice(0, 20)}…`}（同一 Agent，实时同步）`,
     });
     await hostCall("hostFollow", { sessionId: id });
+    await refreshHostModels();
+    broadcastEngine();
     log("session selected via desktop host:", id);
     return activeInfo();
   }
@@ -2038,6 +2130,8 @@ async function newActiveSession() {
       setActiveSession(id);
       appendEvent("system", { text: "已在 DSH 客户端新建会话（客户端立即可见）" });
       if (id) await hostCall("hostFollow", { sessionId: id });
+      await refreshHostModels();
+      broadcastEngine();
       return activeInfo();
     } catch (e) {
       appendEvent("system", { text: "⚠ 新建客户端会话失败：" + String(e.message || e).slice(0, 300) });
@@ -2057,16 +2151,20 @@ async function newActiveSession() {
 }
 
 function sessionStatusPayload() {
+  const mi = modelsInfo();
   return {
     pending: session.pending.length,
     events: session.events.length,
     now: session.nextSeq,
     autoWake: autoWakeOn(),
     mode: enginesCfg.mode,
-    provider: enginesCfg.dsh.provider,
-    model: active.model || enginesCfg.dsh.model,
+    provider: mi.provider || enginesCfg.dsh.provider,
+    model: mi.selected || active.model || enginesCfg.dsh.model,
     configuredModel: enginesCfg.dsh.model,
-    models: modelCatalog(),
+    models: mi.models,
+    modelCurrent: mi.current || null,
+    modelGroups: mi.groups || [],
+    modelFailures: mi.failures || [],
     session: activeInfo(),
     host: {
       connected: hostReady(),
@@ -2374,7 +2472,7 @@ async function route(method, pathname, q, body, res) {
     return { json: { sessions: mergedSessions(q.get("refresh") === "1"), current: active.sessionId, cwd: engineCwd(), host: hostReady() } };
   }
   if (pathname === "/models" && method === "GET") return { json: modelsInfo() };
-  if (pathname === "/engine/model" && method === "POST") return { json: setModel(String(body.model || "")) };
+  if (pathname === "/engine/model" && method === "POST") return { json: await setModel(body) };
 
   if (pathname === "/shutdown" && method === "POST") {
     sendJson(res, 200, { ok: true });
@@ -2399,7 +2497,7 @@ async function handleExtRequest(method, params) {
     case "sessionSelect": return await selectSession(String(params.id || ""));
     case "sessionNew": return await newActiveSession();
     case "models": return modelsInfo();
-    case "setModel": return setModel(String(params.model || ""));
+    case "setModel": return await setModel(params);
     default: err(404, "unknown ext request: " + method);
   }
 }

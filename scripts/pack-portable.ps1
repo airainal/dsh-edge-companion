@@ -2,8 +2,8 @@
 # Markdown docs stay in the repository but are not shipped in the zip.
 # Keep this file ASCII-only.
 #   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1 -Version 1.4.1
-param([string]$Version = '1.4.1', [string]$OutDir = 'dist')
+#   powershell -ExecutionPolicy Bypass -File scripts\pack-portable.ps1 -Version 1.4.2
+param([string]$Version = '1.4.2', [string]$OutDir = 'dist')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 if ([System.IO.Path]::IsPathRooted($OutDir)) { $dist = $OutDir } else { $dist = Join-Path $root $OutDir }

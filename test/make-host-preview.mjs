@@ -3,8 +3,8 @@ import path from "node:path";
 
 const root = path.resolve(process.argv[2] || ".");
 const html = fs.readFileSync(path.join(root, "extension", "sidepanel.html"), "utf8");
-const css = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.1.css"), "utf8");
-const js = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.1.js"), "utf8");
+const css = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.2.css"), "utf8");
+const js = fs.readFileSync(path.join(root, "extension", "sidepanel-1.3.2.js"), "utf8");
 const body = html.match(/<body>([\s\S]*?)<\/body>/)[1].replace(/<script[\s\S]*?<\/script>/g, "");
 
 const mk = (text) => ({ text, chunks: text.match(/.{1,6}/gs) || [text] });
@@ -19,14 +19,26 @@ const events = [
   { seq: 60, kind: "assistant_final", streamId: "demo", text: answer.text },
 ];
 
+const reasoning = {
+  defaultEffort: "high",
+  efforts: [
+    { id: "off", name: "Off" },
+    { id: "low", name: "Low" },
+    { id: "high", name: "High" },
+    { id: "max", name: "Max" },
+  ],
+};
 const engine = {
   mode: "dsh",
   host: { connected: true, running: true, codex: true },
   session: { sessionId: "session-demo-edge-codex", title: "Codex 模式 · Edge 联调", located: true },
   models: [
-    { id: "deepseek-flash", label: "DeepSeek-V4.1-Flash" },
-    { id: "deepseek-v4-pro", label: "DeepSeek-V4-Pro" },
+    { id: "deepseek-flash", label: "DeepSeek-V4.1-Flash", provider: "deepseek-account", providerName: "DeepSeek Account", reasoning },
+    { id: "deepseek-v4-pro", label: "DeepSeek-V4-Pro", provider: "deepseek-account", providerName: "DeepSeek Account", reasoning },
+    { id: "glm-5.3", label: "GLM-5.3", provider: "zai-coding-cn", providerName: "zai-coding-cn", reasoning: { efforts: [{ id: "off", name: "Off" }, { id: "high", name: "High" }] } },
+    { id: "glm-5.3-flash", label: "GLM-5.3-Flash", provider: "zai-coding-cn", providerName: "zai-coding-cn", reasoning: { efforts: [{ id: "off", name: "Off" }, { id: "high", name: "High" }] } },
   ],
+  modelCurrent: { provider: "deepseek-account", model: "deepseek-flash", reasoningEffort: "max" },
   configuredModel: "deepseek-flash",
   model: "deepseek-flash",
   provider: "deepseek-account",
@@ -56,7 +68,7 @@ const stub = `<script>
         case "loadEvents": setTimeout(() => dispatch({ type: "events", events: [], now: 0 }), 5); break;
         case "getTabs": setTimeout(() => dispatch({ type: "tabs", tabs: [] }), 5); break;
         case "getEngine": setTimeout(() => dispatch({ type: "engine", engine: ENGINE }), 5); break;
-        case "getModels": setTimeout(() => dispatch({ type: "models", provider: "deepseek-account", selected: "deepseek-flash", models: ENGINE.models }), 5); break;
+        case "getModels": setTimeout(() => dispatch({ type: "models", provider: "deepseek-account", selected: "deepseek-flash", current: ENGINE.modelCurrent, models: ENGINE.models }), 5); break;
         case "getSessions": setTimeout(() => dispatch({ type: "sessions", sessions: SESSIONS, current: SESSIONS[0].id }), 5); break;
         case "say": setTimeout(() => dispatch({ type: "sayOk" }), 5); break;
         default: break;

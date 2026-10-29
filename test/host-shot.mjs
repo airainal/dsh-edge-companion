@@ -30,4 +30,18 @@ for (const state of ["running", "done"]) {
   fs.writeFileSync(file, Buffer.from(shot.data, "base64"));
   console.log("wrote", file);
 }
+// effort menu open state
+await send("Runtime.evaluate", { expression: 'document.getElementById("effort-btn").click()' });
+await sleep(400);
+const effortShot = await send("Page.captureScreenshot", { format: "png" });
+const effortFile = path.join(root, "test", "host-effort.png");
+fs.writeFileSync(effortFile, Buffer.from(effortShot.data, "base64"));
+console.log("wrote", effortFile);
+// model menu open state
+await send("Runtime.evaluate", { expression: 'document.getElementById("effort-btn").click(); document.getElementById("model-btn").click()' });
+await sleep(400);
+const modelShot = await send("Page.captureScreenshot", { format: "png" });
+const modelFile = path.join(root, "test", "host-models.png");
+fs.writeFileSync(modelFile, Buffer.from(modelShot.data, "base64"));
+console.log("wrote", modelFile);
 ws.close(); proc.kill();

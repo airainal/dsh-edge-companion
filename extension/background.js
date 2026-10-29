@@ -129,7 +129,10 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (m.type === "setModel" && typeof m.model === "string" && m.model) {
       try {
-        const r = await bridgeCall("setModel", { model: m.model }, 20000);
+        const params = { model: m.model };
+        if (m.provider) params.provider = m.provider;
+        if (m.reasoningEffort) params.reasoningEffort = m.reasoningEffort;
+        const r = await bridgeCall("setModel", params, 25000);
         port.postMessage({ type: "models", ...r });
         pushEngineToPort(port);
       } catch (e) {
@@ -295,6 +298,11 @@ async function handleFrame(msg) {
   // 桥接推送：桌面客户端运行状态（停止按钮 / Codex 标识）
   if (msg && msg.method === "status") {
     notifyPorts({ type: "status", ...(msg.params || {}) });
+    return;
+  }
+  // 桥接推送：模型/推理等级等引擎状态变化（双端同步）
+  if (msg && msg.method === "engine") {
+    notifyPorts({ type: "engine", engine: msg.params && msg.params.engine });
     return;
   }
   // 桥接推送：切换会话 → 让侧边栏清空并重载历史

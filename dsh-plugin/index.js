@@ -37,7 +37,7 @@ function findNode() {
   return { exe: process.execPath, electron: true };
 }
 
-const BRIDGE_VERSION = "1.2.2";
+const BRIDGE_VERSION = "1.2.3";
 
 async function stopOutdatedBridge() {
   try {

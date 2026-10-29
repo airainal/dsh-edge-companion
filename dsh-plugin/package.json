@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-edge-bridge",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "Starts the DSH Edge Bridge and connects the Edge side panel to the desktop Session Controller (same Agent, live stream, stop, Codex state).",

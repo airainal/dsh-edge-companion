@@ -176,6 +176,12 @@ async function handleBridgeRequest(method, params) {
       }));
       return { sessions: items };
     }
+    case "hostModels": {
+      return await hostModels();
+    }
+    case "hostModelSet": {
+      return await hostModelSet(params);
+    }
     case "hostStatus": {
       return { sessionId: followSessionId, running, codex: await readCodex() };
     }
@@ -243,9 +249,11 @@ async function follow(sessionId, force = false) {
   followAbort = new AbortController();
   followSessionId = sessionId;
   followActive = true;
+  modelState = null;
   const my = followAbort;
   const signal = my.signal;
   log("following", sessionId);
+  refreshModelState(true).catch(() => {});
 
   (async () => {
     try {
@@ -257,6 +265,9 @@ async function follow(sessionId, force = false) {
       for await (const frame of frames) {
         if (signal.aborted) break;
         send("hostFrame", { sessionId, frame });
+        if (frame && frame.type === "snapshot" && frame.projections && frame.projections.values) {
+          updateModelState(frame.projections.values.modelSelection);
+        }
         const event = frame && frame.type === "event" ? frame.event : null;
         if (event && event.type === "turn/start") {
           running = true;
@@ -278,6 +289,110 @@ async function follow(sessionId, force = false) {
 }
 
 let codexCache = { at: 0, enabled: false };
+
+// ---- model catalog / current selection (synced with the desktop client) ----
+let modelState = null; // { provider, model, reasoningEffort? }
+let modelCatalogCache = { at: 0, value: null };
+let modelSetAt = 0;
+
+function sameSelection(a, b) {
+  if (!a || !b) return a === b;
+  return a.provider === b.provider && a.model === b.model && (a.reasoningEffort || "") === (b.reasoningEffort || "");
+}
+
+function cleanSelection(value) {
+  if (!value || typeof value !== "object") return null;
+  const provider = String(value.provider || "");
+  const model = String(value.model || "");
+  if (!provider || !model) return null;
+  const out = { provider, model };
+  if (value.reasoningEffort !== undefined && value.reasoningEffort !== null && String(value.reasoningEffort) !== "") {
+    out.reasoningEffort = String(value.reasoningEffort);
+  }
+  return out;
+}
+
+function updateModelState(next, force = false) {
+  const sel = cleanSelection(next);
+  if (!sel) return;
+  if (!force && sameSelection(sel, modelState)) return;
+  modelState = sel;
+  send("hostModel", { current: sel });
+}
+
+async function readModelSelection() {
+  if (!followSessionId) return null;
+  try {
+    const res = await ctx.sessionController.projections({ sessionId: followSessionId }, AbortSignal.timeout(4000));
+    const values = res && res.values ? res.values : null;
+    return cleanSelection(values && values.modelSelection);
+  } catch {
+    return null;
+  }
+}
+
+async function refreshModelState(force = false) {
+  if (!helloOk || !followSessionId) return;
+  if (!force && Date.now() - modelSetAt < 3000) return; // our own selection may not be projected yet
+  const sel = await readModelSelection();
+  if (sel) updateModelState(sel, force);
+}
+
+function normalizeModelCatalog(cat) {
+  const groups = (cat && Array.isArray(cat.groups) ? cat.groups : []).map((g) => ({
+    id: String(g.id || ""),
+    name: String(g.name || g.id || ""),
+    models: (Array.isArray(g.models) ? g.models : []).map((m) => {
+      const model = {
+        id: String(m.id || ""),
+        name: String(m.name || m.id || ""),
+      };
+      if (m.description) model.description = String(m.description);
+      if (m.reasoning && Array.isArray(m.reasoning.efforts)) {
+        model.reasoning = {
+          defaultEffort: m.reasoning.defaultEffort ? String(m.reasoning.defaultEffort) : undefined,
+          efforts: m.reasoning.efforts.map((e) => ({ id: String(e.id || ""), name: String(e.name || e.id || "") })),
+        };
+      }
+      return model;
+    }),
+  }));
+  const out = { groups };
+  const def = cleanSelection(cat && cat.default);
+  if (def) out.default = def;
+  if (cat && Array.isArray(cat.failures)) {
+    out.failures = cat.failures.map((f) => ({ id: String(f.id || ""), name: String(f.name || ""), message: String(f.message || "") }));
+  }
+  return out;
+}
+
+async function hostModels() {
+  if (!modelCatalogCache.value || Date.now() - modelCatalogCache.at > 15000) {
+    const cat = await ctx.sessionController.modelCatalog();
+    modelCatalogCache = { at: Date.now(), value: normalizeModelCatalog(cat) };
+  }
+  const current = modelState || (await readModelSelection()) || modelCatalogCache.value.default || null;
+  if (current && !modelState) modelState = current;
+  return { catalog: modelCatalogCache.value, current };
+}
+
+async function hostModelSet(params) {
+  if (!followSessionId) throw new Error("no active session");
+  const provider = String(params.provider || "");
+  const model = String(params.model || "");
+  if (!provider || !model) throw new Error("provider and model are required");
+  const request = { sessionId: followSessionId, provider, model };
+  if (params.reasoningEffort !== undefined && params.reasoningEffort !== null && String(params.reasoningEffort) !== "") {
+    request.reasoningEffort = String(params.reasoningEffort);
+  }
+  const result = await ctx.sessionController.selectModel(request);
+  const selected = cleanSelection(result && result.selected) || cleanSelection(request);
+  modelSetAt = Date.now();
+  updateModelState(selected, true);
+  modelCatalogCache = { at: 0, value: null };
+  log("model selected", selected.provider + "/" + selected.model + (selected.reasoningEffort ? " effort=" + selected.reasoningEffort : ""));
+  return { current: modelState };
+}
 
 async function readCodex() {
   if (Date.now() - codexCache.at < 3000) return codexCache.enabled;
@@ -338,6 +453,8 @@ export function startAgentHost(pluginCtx) {
   followSessionId = null;
   running = false;
   codexCache = { at: 0, enabled: false };
+  modelState = null;
+  modelCatalogCache = { at: 0, value: null };
 
   log("starting; bridge", WS_URL);
   connect(my);
@@ -358,10 +475,18 @@ export function startAgentHost(pluginCtx) {
     } catch {}
   }, 5000);
 
+  // Model/reasoning is session-projected; poll keeps the side panel in sync
+  // when the desktop client changes it (selection writes no session event).
+  const modelTimer = setInterval(() => {
+    if (my !== generation || !helloOk || !followSessionId) return;
+    refreshModelState(false).catch(() => {});
+  }, 2000);
+
   pluginCtx.effect(() => () => {
     if (my !== generation) return;
     generation += 1; // make the closing socket's onclose stop reconnecting
     clearInterval(timer);
+    clearInterval(modelTimer);
     try { ws?.close(); } catch {}
     followAbort?.abort();
   }, "dsh-edge-bridge agent host lifecycle");

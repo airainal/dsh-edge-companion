@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <link rel="stylesheet" href="sidepanel-1.3.1.css" />
+  <link rel="stylesheet" href="sidepanel-1.3.2.css" />
 </head>
 <body>
   <header>
@@ -48,6 +48,13 @@
             </button>
             <div class="dd-menu" id="model-menu" role="listbox"></div>
           </div>
+          <div class="dd dd-up dd-small hidden" id="effort-dd">
+            <button class="dd-btn dd-btn-sm" id="effort-btn" type="button" aria-haspopup="listbox" aria-expanded="false" title="推理等级">
+              <span class="dd-label" id="effort-label">推理</span>
+              <svg class="dd-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.4 8 10.4l4-4" /></svg>
+            </button>
+            <div class="dd-menu" id="effort-menu" role="listbox"></div>
+          </div>
           <span id="session-hint" class="session-hint"></span>
         </div>
         <div id="pending" class="pending hidden">⏳ 待 DSH 领取…</div>
@@ -68,6 +75,6 @@
     </div>
   </div>
 
-  <script src="sidepanel-1.3.1.js"></script>
+  <script src="sidepanel-1.3.2.js"></script>
 </body>
 </html>

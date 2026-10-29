@@ -11,6 +11,8 @@ let lastToolSummary = null;
 let currentSessionId = null;
 let sessionTitle = "";
 let currentModel = "";
+let currentProvider = "";
+let currentEffort = "";
 let models = [];
 let running = false;
 const liveStreams = new Map(); // streamId -> { textEl, thinkEl }
@@ -139,35 +141,105 @@ function renderEngine(e) {
     $("session-hint").title = e.session.sessionId || "";
     $("session-label").textContent = e.session.sessionId ? (sessionTitle || "新会话") : "＋ 新会话";
   }
-  if (Array.isArray(e.models) && e.models.length && !models.length) renderModels({ models: e.models, selected: e.configuredModel || e.model });
+  if (Array.isArray(e.models) && e.models.length) {
+    renderModels({ models: e.models, current: e.modelCurrent, provider: e.provider, selected: e.model });
+  }
+}
+
+function modelMatches(item) {
+  return item && item.id === currentModel && (!currentProvider || !item.provider || item.provider === currentProvider);
+}
+
+function effortName(item, id) {
+  if (!item || !item.reasoning || !id) return "";
+  const hit = (item.reasoning.efforts || []).find((e) => e.id === id);
+  return hit ? (hit.name || hit.id) : id;
 }
 
 function renderModels(m) {
   if (!m || !Array.isArray(m.models)) return;
   models = m.models;
-  if (m.selected) currentModel = m.selected;
+  const cur = m.current;
+  if (cur && cur.model) {
+    currentProvider = cur.provider || "";
+    currentModel = cur.model;
+    currentEffort = cur.reasoningEffort || "";
+  } else {
+    if (m.provider) currentProvider = m.provider;
+    if (m.selected) currentModel = m.selected;
+  }
+
   const menu = $("model-menu");
   menu.innerHTML = "";
+  const providerCount = new Set(models.map((x) => x.provider || "")).size;
   for (const item of models) {
     const b = document.createElement("button");
     b.type = "button";
     b.setAttribute("role", "option");
-    b.className = "dd-item" + (item.id === currentModel ? " current" : "");
+    const chosen = modelMatches(item);
+    b.className = "dd-item" + (chosen ? " current" : "");
     b.innerHTML = '<span class="t"></span><span class="check"></span>';
-    b.querySelector(".t").textContent = item.label || item.id;
-    b.querySelector(".check").textContent = item.id === currentModel ? "✓" : "";
+    const label = (providerCount > 1 && item.providerName ? item.providerName + " · " : "") + (item.label || item.id);
+    b.querySelector(".t").textContent = label;
+    b.title = item.description || label;
+    b.querySelector(".check").textContent = chosen ? "✓" : "";
     b.addEventListener("click", () => {
       closeMenus();
+      currentProvider = item.provider || "";
       currentModel = item.id;
+      currentEffort = (item.reasoning && item.reasoning.defaultEffort) || "";
       $("model-label").textContent = item.label || item.id;
-      port.postMessage({ type: "setModel", model: item.id });
-      renderModels({ models, selected: item.id });
+      const msg = { type: "setModel", provider: item.provider, model: item.id };
+      if (currentEffort) msg.reasoningEffort = currentEffort;
+      port.postMessage(msg);
+      renderModels({ models, current: { provider: currentProvider, model: currentModel, reasoningEffort: currentEffort } });
     });
     menu.appendChild(b);
   }
-  const cur = models.find((x) => x.id === currentModel);
-  $("model-label").textContent = cur ? (cur.label || cur.id) : (currentModel || "模型");
+  const curItem = models.find(modelMatches);
+  $("model-label").textContent = curItem ? (curItem.label || curItem.id) : (currentModel || "模型");
+  renderEffort(curItem);
   updateDisabled();
+}
+
+function renderEffort(curItem) {
+  const item = curItem || models.find(modelMatches);
+  const efforts = item && item.reasoning && Array.isArray(item.reasoning.efforts) ? item.reasoning.efforts : [];
+  const dd = $("effort-dd");
+  const menu = $("effort-menu");
+  if (!menu || !dd) return;
+  menu.innerHTML = "";
+  if (!efforts.length) {
+    dd.classList.add("hidden");
+    return;
+  }
+  dd.classList.remove("hidden");
+  const effective = currentEffort || (item.reasoning.defaultEffort || "");
+  $("effort-label").textContent = effortName(item, effective) || "默认";
+  $("effort-btn").title = "推理等级：" + (effortName(item, effective) || "默认");
+  for (const effort of efforts) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "option");
+    b.className = "dd-item" + (effort.id === effective ? " current" : "");
+    b.innerHTML = '<span class="t"></span><span class="check"></span>';
+    b.querySelector(".t").textContent = effort.name || effort.id;
+    b.title = effort.description || effort.name || effort.id;
+    b.querySelector(".check").textContent = effort.id === effective ? "✓" : "";
+    b.addEventListener("click", () => {
+      closeMenus();
+      currentEffort = effort.id;
+      $("effort-label").textContent = effort.name || effort.id;
+      port.postMessage({
+        type: "setModel",
+        provider: item.provider || currentProvider,
+        model: item.id || currentModel,
+        reasoningEffort: effort.id,
+      });
+      renderEffort(item);
+    });
+    menu.appendChild(b);
+  }
 }
 
 // ---------- 会话列表 / 选择 ----------
@@ -215,6 +287,7 @@ function refreshSessions(refresh) { port.postMessage({ type: "getSessions", refr
 
 bindDropdown("session-dd", "session-btn");
 bindDropdown("model-dd", "model-btn");
+bindDropdown("effort-dd", "effort-btn");
 $("btn-new-session").addEventListener("click", () => { closeMenus(); port.postMessage({ type: "newSession" }); });
 
 // ---------- 会话渲染 ----------

@@ -7,7 +7,7 @@
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D4.svg">
   <img alt="Edge 114+" src="https://img.shields.io/badge/Edge-114%2B-4D6BFE.svg">
   <img alt="DeepSeek Harness" src="https://img.shields.io/badge/DeepSeek%20Harness-plugin-6C5CE7.svg">
-  <img alt="Release" src="https://img.shields.io/badge/release-v1.4.1-22C55E.svg">
+  <img alt="Release" src="https://img.shields.io/badge/release-v1.4.2-22C55E.svg">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   不用重启浏览器，不用 <code>--remote-debugging-port</code>，侧边栏就是 DSH 的会话镜像。
 </p>
 
-<p align="center"><i>Releases 里的 <code>dsh-edge-companion-1.4.1.zip</code> 是可直接分发的一键包，安装教程也在包里。</i></p>
+<p align="center"><i>Releases 里的 <code>dsh-edge-companion-1.4.2.zip</code> 是可直接分发的一键包，安装教程也在包里。</i></p>
 
 ---
 
@@ -104,7 +104,7 @@ Edge 侧边栏 ⇄ 桥接(8766) ⇄ WS 宿主通道 ⇄ dsh-plugin 宿主通道�
 
 ### 4. 随 DSH 自动启动（单一插件）
 
-仓库只保留一个 DSH 宿主插件 **`dsh-plugin/`**（2.0.0）。它同时：
+仓库只保留一个 DSH 宿主插件 **`dsh-plugin/`**（2.1.0）。它同时：
 
 - 用 DSH 自带 Node 隐藏启动 `..\bridge\bridge.mjs`；
 - 在 DSH 进程内连接桥接，把侧边栏接到同一个 `sessionController`（实时流、停止、Codex 同状态）。
@@ -156,11 +156,11 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-plugin 宿主
 
 ### 第 1 步：加载 Edge 扩展
 
-1. 解压 `dsh-edge-companion-1.4.1.zip` 到任意目录（路径含空格/中文都可以，**保持目录完整**）；
+1. 解压 `dsh-edge-companion-1.4.2.zip` 到任意目录（路径含空格/中文都可以，**保持目录完整**）；
 2. Edge 地址栏打开 `edge://extensions`；
 3. 打开左下角 **「开发人员模式」**；
 4. 点 **「加载解压缩的扩展」**，选择解压出来的 `extension` 文件夹；
-5. 出现 **DSH Edge Bridge 1.3.1**（蓝发鲸鱼少女图标）即成功。
+5. 出现 **DSH Edge Bridge 1.3.2**（蓝发鲸鱼少女图标）即成功。
 
 > 扩展 ID 由 `manifest.json` 的 `key` 固定（`kioclakapkblemfnlgcfbciedfhkpmhc`），换路径/换机器都不变。
 
@@ -170,7 +170,7 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-plugin 宿主
 2. 粘贴 **`dsh-plugin`** 的绝对路径，例如 `D:\tools\dsh-edge-companion\dsh-plugin`；
 3. 点 **Install**（`link:` 安装，不联网）；如提示重启，重启一次 DSH。
 
-这个插件（2.0.0）同时做两件事：启动桥接 + 在 DSH 进程内把侧边栏接到客户端**同一个 Agent**。
+这个插件（2.1.0）同时做两件事：启动桥接 + 在 DSH 进程内把侧边栏接到客户端**同一个 Agent**。
 装好后侧边栏发指令会直接进入**客户端当前会话**，实时同步、可停止、Codex 状态随客户端。
 不再需要安装 `dsh-plugin 宿主通道`——它已合并进 `dsh-plugin`。
 
@@ -211,7 +211,9 @@ Edge 侧边栏 ──WS──▶ bridge ◀──WS host── dsh-plugin 宿主
 |---|---|
 | 输入指令 | 例如「打开 bilibili.com 看看热门，挑三条告诉我」 |
 | 顶部会话下拉 | 选择真实 DSH 会话接力，或 `＋` 新建（客户端立即可见） |
-| 底部模型下拉 | DeepSeek-V4.1-Flash / DeepSeek-V4-Pro，下条指令生效 |
+| 底部模型下拉 | **客户端真实目录**：DeepSeek Account 的 Flash/V4-Pro，以及自定义 provider（如 GLM）的全部模型 |
+| **推理等级下拉** | 模型右侧：Off / Low / High / Max（按当前模型实际档位），与模型一起写入当前会话 |
+| **双端同步** | 侧边栏改模型/推理 → 客户端会话立即生效；客户端改 → 2 秒内同步回侧边栏 |
 | **发送键变形** | 执行中同一个按钮变成红色停止方块，点它停止；结束后恢复向上箭头 |
 | **DSH · Codex** | 顶部标签只显示客户端 Codex 状态，不在插件里新增开关 |
 | 思考 / 工具折叠块 | 点击展开看完整参数与结果；执行中思考实时增量显示 |
