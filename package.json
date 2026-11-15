@@ -1,0 +1,52 @@
+{
+  "name": "dsh-edge-companion",
+  "version": "1.4.4",
+  "description": "Connects DeepSeek Harness to the user's logged-in Microsoft Edge: local bridge, MV3 side panel, and real-tab control over CDP.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "edge",
+    "browser",
+    "cdp"
+  ],
+  "author": "airainal",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/airainal/dsh-edge-companion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/airainal/dsh-edge-companion/issues"
+  },
+  "homepage": "https://github.com/airainal/dsh-edge-companion#readme",
+  "engines": {
+    "dsh": "^0.2.1-rc.1"
+  },
+  "exports": {
+    ".": "./dsh-plugin/index.js",
+    "./locale/*.json": "./dsh-plugin/locale/*.json",
+    "./icon": "./dsh-plugin/icon.png",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dsh-plugin",
+    "bridge/bridge.mjs",
+    "bridge/engines.json",
+    "bridge/.dsh-overlay.yml",
+    "bridge/start-bridge.cmd",
+    "bridge/start-bridge-hidden.vbs",
+    "bin",
+    "extension",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

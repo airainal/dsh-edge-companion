@@ -183,7 +183,8 @@ async function handleBridgeRequest(method, params) {
       return await hostModelSet(params);
     }
     case "hostStatus": {
-      return { sessionId: followSessionId, running, codex: await readCodex() };
+      const live = await refreshRunning();
+      return { sessionId: followSessionId, running: live, codex: await readCodex() };
     }
     default:
       throw new Error("unknown host request: " + method);
@@ -205,12 +206,48 @@ async function createSession() {
   return sessionId;
 }
 
+async function sessionRunning(id) {
+  if (!id) return false;
+  try {
+    const value = await ctx.sessionController.list({}, AbortSignal.timeout(4000));
+    const row = (value.items || []).find((s) => s.sessionId === id);
+    if (row) return row.running === true;
+  } catch {}
+  return running;
+}
+
+async function refreshRunning() {
+  if (!followSessionId) return running;
+  const next = await sessionRunning(followSessionId);
+  if (next !== running) {
+    running = next;
+    send("hostStatus", { sessionId: followSessionId, running: next, codex: await readCodex() });
+  }
+  return running;
+}
+
 async function prompt(text, sessionId) {
   const id = sessionId || await createSession();
   const resolved = await ctx.sessionController.resolveAgent(id);
   if (resolved && resolved.error) {
     throw new Error("session resolve failed: " + String(resolved.error.code || resolved.error.message || resolved.error));
   }
+
+  // Interrupt-style input: if the turn is actually running, stop it first so the
+  // new message is admitted immediately and becomes visible in the client.
+  try {
+    if (await sessionRunning(id)) {
+      log("interrupting running turn before prompt", id);
+      await ctx.sessionController.cancel({ sessionId: id }).catch((e) => log("cancel before prompt failed:", String(e && e.message ? e.message : e)));
+      for (let i = 0; i < 32; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (!(await sessionRunning(id))) break;
+      }
+    }
+  } catch (e) {
+    log("interrupt before prompt threw:", String(e && e.message ? e.message : e));
+  }
+
   const requestId = `edge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await ctx.sessionController.prompt({
     requestId,
@@ -254,6 +291,7 @@ async function follow(sessionId, force = false) {
   const signal = my.signal;
   log("following", sessionId);
   refreshModelState(true).catch(() => {});
+  refreshRunning().catch(() => {});
 
   (async () => {
     try {
@@ -472,6 +510,11 @@ export function startAgentHost(pluginCtx) {
         cwd: s.cwd,
       }));
       send("hostSessions", { sessions });
+      const row = (value.items || []).find((s) => s.sessionId === followSessionId);
+      if (row && (row.running === true) !== running) {
+        running = row.running === true;
+        send("hostStatus", { sessionId: followSessionId, running, codex: await readCodex() });
+      }
     } catch {}
   }, 5000);
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.4 — 2026-11-15
+
+- 仓库根新增 `package.json` 与 `cordis.patch.yml`，声明 `dsh.bundle`，可直接通过
+  `dsh plugin add github:airainal/dsh-edge-companion` 安装；插件实现仍在 `dsh-plugin/`。
+- 扩展名统一为 **DSH Edge Bridge**（`short_name` 同步），扩展版本 1.3.4；manifest 名称
+  与 Edge 扩展页、调试横幅一致。
+- 安装包 1.4.4。
+
 ## v1.4.3 — 2026-10-29
 
 - 模型选择触发器改成**新拟态（neumorphic）凸起胶囊**：同底色 + 双向柔光阴影，展开时转为内凹，
