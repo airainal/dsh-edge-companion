@@ -413,6 +413,35 @@ textarea#input::placeholder { color: var(--dim-2); }
 }
 #tab-list .empty { cursor: default; text-align: center; color: var(--dim-2); }
 
+/* ---- 图片附件托盘（粘贴 / 拖入，逻辑同客户端 composer） ---- */
+.attach-tray {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 2px 4px 6px;
+}
+.attach-tray.hidden { display: none; }
+.attach-chip {
+  position: relative; width: 54px; height: 54px;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line-strong); background: var(--card);
+}
+.attach-chip img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.attach-x {
+  position: absolute; top: 2px; right: 2px;
+  width: 17px; height: 17px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(31, 35, 40, .72); color: #fff;
+  font-size: 10px; line-height: 17px; text-align: center; cursor: pointer;
+}
+.attach-x:hover { background: rgba(31, 35, 40, .92); }
+.composer.drag-over .input-pill { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 已发送消息上的图片标签 */
+.msg-images { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.msg.user .msg-images { justify-content: flex-end; }
+.msg-image {
+  font-size: 10.5px; color: var(--dim); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .views, .dd-menu, .dd-chev, #btn-send, .icon-btn { transition: none !important; }
 }

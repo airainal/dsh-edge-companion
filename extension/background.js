@@ -67,9 +67,11 @@ chrome.runtime.onConnect.addListener((port) => {
     if (!m || typeof m !== "object") return;
     if (m.type === "getTabs") pushTabsToPort(port);
     if (m.type === "getEngine") pushEngineToPort(port);
-    if (m.type === "say" && typeof m.text === "string") {
+    if (m.type === "say" && (typeof m.text === "string" || Array.isArray(m.images))) {
       try {
-        const r = await bridgeCall("sessionSay", { text: m.text });
+        const payload = { text: typeof m.text === "string" ? m.text : "" };
+        if (Array.isArray(m.images) && m.images.length) payload.images = m.images;
+        const r = await bridgeCall("sessionSay", payload, 150000);
         port.postMessage({ type: "sayOk", ...r });
         pushEngineToPort(port);
       } catch (e) {

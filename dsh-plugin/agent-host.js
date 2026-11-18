@@ -152,7 +152,7 @@ async function handleBridgeRequest(method, params) {
     }
     case "hostPrompt": {
       const sessionId = String(params.sessionId || "");
-      await prompt(String(params.text || ""), sessionId);
+      await prompt(String(params.text || ""), sessionId, params.images);
       return { accepted: true, sessionId: followSessionId };
     }
     case "hostStop": {
@@ -226,7 +226,60 @@ async function refreshRunning() {
   return running;
 }
 
-async function prompt(text, sessionId) {
+// Prompt image parts follow the Host contract (`EncodedImageAttachment`):
+// `{ type: 'image', mediaType, data: <canonical base64>, name? }`. The Client
+// composer sends the same shape, so the side panel reuses it verbatim.
+const PROMPT_IMAGE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const PROMPT_MAX_IMAGES = 8;
+
+function base64Bytes(data) {
+  const clean = String(data || "");
+  if (!clean) return 0;
+  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+}
+
+/** Keep only parts this Host can admit, in submission order; text first, then images. */
+function buildPromptContent(text, images) {
+  const parts = [];
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (trimmed) parts.push({ type: "text", text: trimmed });
+  const list = Array.isArray(images) ? images : [];
+  for (const raw of list) {
+    if (parts.filter((p) => p.type === "image").length >= PROMPT_MAX_IMAGES) break;
+    if (!raw || typeof raw !== "object") continue;
+    const mediaType = typeof raw.mediaType === "string" ? raw.mediaType.trim().toLowerCase() : "";
+    const data = typeof raw.data === "string" ? raw.data.replace(/^data:[^;]+;base64,/, "") : "";
+    if (!PROMPT_IMAGE_MEDIA_TYPES.has(mediaType) || !data) continue;
+    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 120) : undefined;
+    parts.push(name ? { type: "image", mediaType, data, name } : { type: "image", mediaType, data });
+  }
+  if (!parts.length) throw new Error("prompt 既没有文本也没有可用图片");
+  return parts;
+}
+
+/** Pre-flight the deployment's image policy so a refusal is a readable message. */
+function checkImageLimits(content) {
+  const limits = ctx.attachments?.imageLimits;
+  if (!limits) return;
+  const images = content.filter((p) => p.type === "image");
+  if (images.length > limits.maxImagesPerMessage) {
+    throw new Error(`图片数量超限：最多 ${limits.maxImagesPerMessage} 张`);
+  }
+  let total = 0;
+  for (const part of images) {
+    const bytes = base64Bytes(part.data);
+    if (bytes > limits.maxImageBytes) {
+      throw new Error(`单张图片过大：上限 ${Math.round(limits.maxImageBytes / 1024 / 1024)}MB，当前 ${(bytes / 1024 / 1024).toFixed(1)}MB`);
+    }
+    total += bytes;
+  }
+  if (total > limits.maxMessageImageBytes) {
+    throw new Error(`图片总量过大：上限 ${Math.round(limits.maxMessageImageBytes / 1024 / 1024)}MB，当前 ${(total / 1024 / 1024).toFixed(1)}MB`);
+  }
+}
+
+async function prompt(text, sessionId, images) {
   const id = sessionId || await createSession();
   const resolved = await ctx.sessionController.resolveAgent(id);
   if (resolved && resolved.error) {
@@ -248,17 +301,20 @@ async function prompt(text, sessionId) {
     log("interrupt before prompt threw:", String(e && e.message ? e.message : e));
   }
 
+  const content = buildPromptContent(text, images);
+  checkImageLimits(content);
   const requestId = `edge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await ctx.sessionController.prompt({
     requestId,
     sessionId: id,
     mode: "queue",
-    content: [{ type: "text", text }],
-  }, AbortSignal.timeout(15000));
+    content,
+  }, AbortSignal.timeout(60000));
   running = true;
   send("hostStatus", { sessionId: id, running: true, codex: await readCodex() });
   await follow(id, true);
-  log("prompt accepted", id, text.slice(0, 60));
+  const imageCount = content.filter((p) => p.type === "image").length;
+  log("prompt accepted", id, text.slice(0, 60), imageCount ? `+${imageCount} image(s)` : "");
 }
 
 async function stop(sessionId) {

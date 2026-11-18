@@ -380,6 +380,19 @@ function appendEvent(ev, { scroll = true } = {}) {
     d.className = "msg user";
     d.innerHTML = '<div class="who">我</div><div class="bubble"></div>';
     d.querySelector(".bubble").textContent = ev.text || "";
+    if (Array.isArray(ev.images) && ev.images.length) {
+      const row = document.createElement("div");
+      row.className = "msg-images";
+      for (const im of ev.images) {
+        const tag = document.createElement("span");
+        tag.className = "msg-image";
+        const label = im.name || String(im.mediaType || "image").replace("image/", "").toUpperCase();
+        const size = im.bytes ? " · " + Math.max(1, Math.round(im.bytes / 1024)) + "KB" : "";
+        tag.textContent = "🖼 " + label + size;
+        row.appendChild(tag);
+      }
+      d.appendChild(row);
+    }
     chat.appendChild(d);
     lastUserSeq = ev.seq;
     $("pending").classList.remove("hidden");
@@ -589,6 +602,86 @@ function handlePortMessage(m) {
   if (m.type === "sayOk") port.postMessage({ type: "getEngine" });
 }
 
+// ---------- 图片附件（逻辑对齐客户端 composer：粘贴 / 拖入 / 缩略图 / ✕ 移除） ----------
+const MAX_ATTACH = 8;
+const MAX_ATTACH_BYTES = 4 * 1024 * 1024;
+const ATTACH_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+let attachments = [];
+let attachSeq = 0;
+
+function attachNotice(text) {
+  const d = document.createElement("div");
+  d.className = "sysline";
+  d.textContent = text;
+  $("chat").appendChild(d);
+  scrollBottom();
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addImageFiles(fileList) {
+  const files = [...(fileList || [])].filter((f) => f && ATTACH_TYPES.has(f.type));
+  if (!files.length) return;
+  for (const file of files) {
+    if (attachments.length >= MAX_ATTACH) { attachNotice("⚠ 最多附 " + MAX_ATTACH + " 张图片"); break; }
+    if (file.size > MAX_ATTACH_BYTES) {
+      attachNotice("⚠ 已跳过「" + (file.name || "图片") + "」：超过 4MB");
+      continue;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const m = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUrl);
+      if (!m) continue;
+      const mediaType = m[1].toLowerCase();
+      if (!ATTACH_TYPES.has(mediaType)) continue;
+      attachments.push({
+        id: "a" + (++attachSeq),
+        name: file.name || "粘贴的图片",
+        mediaType,
+        data: m[2],
+        bytes: file.size,
+        preview: dataUrl,
+      });
+    } catch {}
+  }
+  renderAttachTray();
+}
+
+function renderAttachTray() {
+  const tray = $("attach-tray");
+  tray.innerHTML = "";
+  if (!attachments.length) { tray.classList.add("hidden"); return; }
+  tray.classList.remove("hidden");
+  for (const item of attachments) {
+    const chip = document.createElement("div");
+    chip.className = "attach-chip";
+    chip.title = item.name + " · " + Math.max(1, Math.round(item.bytes / 1024)) + "KB";
+    const img = document.createElement("img");
+    img.src = item.preview;
+    img.alt = item.name;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "attach-x";
+    x.setAttribute("aria-label", "移除图片");
+    x.title = "移除";
+    x.textContent = "✕";
+    x.addEventListener("click", () => {
+      attachments = attachments.filter((a) => a.id !== item.id);
+      renderAttachTray();
+    });
+    chip.appendChild(img);
+    chip.appendChild(x);
+    tray.appendChild(chip);
+  }
+}
+
 // ---------- 发送 ----------
 function autoGrow() {
   const t = $("input");
@@ -599,11 +692,22 @@ function autoGrow() {
 function send(text) {
   const t = $("input");
   const value = (text != null ? text : t.value).trim();
-  if (!value || !connected) return;
-  if (text == null) { t.value = ""; autoGrow(); }
+  const images = text == null ? attachments : [];
+  if (!value && !images.length) return;
+  if (!connected) return;
+  if (text == null) {
+    t.value = "";
+    autoGrow();
+    attachments = [];
+    renderAttachTray();
+  }
   setRunning(true);
   pendingEl().classList.remove("hidden");
-  port.postMessage({ type: "say", text: value });
+  port.postMessage({
+    type: "say",
+    text: value,
+    images: images.map((a) => ({ mediaType: a.mediaType, data: a.data, name: a.name })),
+  });
 }
 
 function stopSession() {
@@ -621,6 +725,41 @@ $("input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (running) stopSession(); else send(); }
 });
 $("input").addEventListener("input", autoGrow);
+
+// 粘贴图片：与客户端一致，图片进托盘，不把二进制塞进 textarea
+$("input").addEventListener("paste", (e) => {
+  const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => f.type && f.type.indexOf("image/") === 0);
+  if (!files.length) return;
+  e.preventDefault();
+  void addImageFiles(files);
+});
+
+// 拖入图片：覆盖整个 composer 区域
+(() => {
+  const composer = document.querySelector(".composer");
+  if (!composer) return;
+  const hasFiles = (e) => {
+    const types = e.dataTransfer && e.dataTransfer.types;
+    return types ? [...types].indexOf("Files") >= 0 : false;
+  };
+  composer.addEventListener("dragover", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    composer.classList.add("drag-over");
+  });
+  composer.addEventListener("dragleave", (e) => {
+    if (composer.contains(e.relatedTarget)) return;
+    composer.classList.remove("drag-over");
+  });
+  composer.addEventListener("drop", (e) => {
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length) return;
+    e.preventDefault();
+    composer.classList.remove("drag-over");
+    void addImageFiles(files);
+  });
+})();
 
 // ---------- 标签页 ----------
 function renderTabs(tabs) {

@@ -6,8 +6,11 @@ import path from "node:path";
 const root = path.resolve(process.argv[2] || ".");
 const outFile = path.join(root, "test", "sidepanel-preview.html");
 const html = fs.readFileSync(path.join(root, "extension", "sidepanel.html"), "utf8");
-const css = fs.readFileSync(path.join(root, "extension", "sidepanel.css"), "utf8");
-const js = fs.readFileSync(path.join(root, "extension", "sidepanel.js"), "utf8");
+// 静态资源带版本号（sidepanel-1.3.3.css/js），从 HTML 里解析真实文件名，避免脚本与页面漂移。
+const cssHref = (html.match(/<link\s+rel="stylesheet"\s+href="([^"]+)"/) || [])[1] || "sidepanel.css";
+const jsSrc = (html.match(/<script\s+src="([^"]+)"><\/script>/) || [])[1] || "sidepanel.js";
+const css = fs.readFileSync(path.join(root, "extension", cssHref), "utf8");
+const js = fs.readFileSync(path.join(root, "extension", jsSrc), "utf8");
 
 let events = [];
 for (const file of [path.join(root, "bridge", "session-log.jsonl"), path.join(root, "test", "sample-session-log.jsonl")]) {
@@ -50,7 +53,11 @@ const stub = `
   function dispatch(m) { for (const fn of listeners) fn(m); }
   const fakePort = {
     onMessage: { addListener(fn) { listeners.push(fn); } },
+    onDisconnect: { addListener() {} },
     postMessage(msg) {
+      window.__sent = window.__sent || [];
+      window.__sent.push(msg);
+      if (msg.type === "say") setTimeout(() => dispatch({ type: "sayOk", ok: true }), 10);
       switch (msg.type) {
         case "loadEvents": setTimeout(() => dispatch({ type: "events", events: EVENTS, now: EVENTS.length }), 10); break;
         case "getTabs": setTimeout(() => dispatch({ type: "tabs", tabs: TABS }), 10); break;
@@ -74,7 +81,7 @@ const stub = `
 `;
 
 const out = html
-  .replace('<link rel="stylesheet" href="sidepanel.css" />', `<style>\n${css}\n</style>`)
-  .replace('<script src="sidepanel.js"></script>', `<script>\n${stub}\n</script>\n<script>\n${js}\n</script>`);
+  .replace(/<link\s+rel="stylesheet"\s+href="[^"]+"\s*\/?>/, `<style>\n${css}\n</style>`)
+  .replace(/<script\s+src="[^"]+"><\/script>/, `<script>\n${stub}\n</script>\n<script>\n${js}\n</script>`);
 fs.writeFileSync(outFile, out);
-console.log(JSON.stringify({ outFile, events: events.length }, null, 1));
+console.log(JSON.stringify({ outFile, cssHref, jsSrc, events: events.length }, null, 1));

@@ -16,6 +16,7 @@ test/hl-*/
 test/headless-prof/
 test/p-*.png
 test/sidepanel-preview.html
+test/sidepanel-preview-attach.html
 test/dup-*.log
 
 # Tooling / OS

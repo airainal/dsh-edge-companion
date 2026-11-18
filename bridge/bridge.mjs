@@ -29,7 +29,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.2.5";
+const VERSION = "1.3.0";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -827,16 +827,50 @@ function broadcastEngine() {
 
 const hostEcho = new Map(); // sidebar text -> time, suppresses the durable user echo
 
-async function sessionSay(text) {
-  if (!text || typeof text !== "string") err(400, "say 需要 text");
+// 侧边栏图片附件复用客户端 composer 的编码 part 形状：
+// { type:'image', mediaType, data:<canonical base64>, name? }，由宿主插件转成 prompt content。
+const SAY_IMAGE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const SAY_MAX_IMAGES = 8;
+// 宿主 RPC 走 WebSocket，帧上限 MAX_FRAME；留出 JSON 与文本余量。
+const SAY_MAX_IMAGE_BASE64 = 6 * 1024 * 1024;
+
+function normalizeSayImages(images) {
+  if (!Array.isArray(images)) return [];
+  const out = [];
+  let budget = 0;
+  for (const raw of images) {
+    if (out.length >= SAY_MAX_IMAGES) break;
+    if (!raw || typeof raw !== "object") continue;
+    const mediaType = typeof raw.mediaType === "string" ? raw.mediaType.trim().toLowerCase() : "";
+    const data = typeof raw.data === "string" ? raw.data.replace(/^data:[^;]+;base64,/, "") : "";
+    if (!SAY_IMAGE_MEDIA_TYPES.has(mediaType) || !data) continue;
+    if (data.length > SAY_MAX_IMAGE_BASE64 - budget) {
+      err(413, "图片总量超出桥接上限（约 " + Math.round(SAY_MAX_IMAGE_BASE64 / 1024 / 1024) + "MB base64）");
+    }
+    budget += data.length;
+    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 120) : undefined;
+    const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+    const bytes = Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+    out.push({ mediaType, data, name, bytes });
+  }
+  return out;
+}
+
+async function sessionSay(text, images) {
+  const imageParts = normalizeSayImages(images);
+  const rawText = typeof text === "string" ? text : "";
+  if (!rawText.trim() && !imageParts.length) err(400, "say 需要 text 或图片");
   // 「新会话」瞬时指令：清空当前会话槽（下条指令在 DSH 里新建真实会话），不唤醒不耗额度
-  const t = text.trim();
-  if (t === "新会话" || t === "/new") {
+  const t = rawText.trim();
+  if (!imageParts.length && (t === "新会话" || t === "/new")) {
     return await newActiveSession();
   }
-  const ev = appendEvent("user", { text: text.slice(0, 4000) });
+  const imageMeta = imageParts.map((p) => ({ name: p.name || "", mediaType: p.mediaType, bytes: p.bytes }));
+  const ev = appendEvent("user", imageMeta.length
+    ? { text: rawText.slice(0, 4000), images: imageMeta }
+    : { text: rawText.slice(0, 4000) });
   session.pending.push({ id: ev.seq, text: ev.text, at: ev.at });
-  hostEcho.set(t, Date.now());
+  if (t) hostEcho.set(t, Date.now());
 
   // 优先使用 DSH 桌面客户端里同一个 Agent（Codex 模式、权限、上下文完全一致）
   if (hostReady()) {
@@ -847,7 +881,13 @@ async function sessionSay(text) {
         sid = String(created.sessionId || "");
         if (sid) setActiveSession(sid);
       }
-      await hostCall("hostPrompt", { sessionId: sid, text });
+      await hostCall("hostPrompt", {
+        sessionId: sid,
+        text: rawText,
+        images: imageParts.map((p) => (p.name
+          ? { mediaType: p.mediaType, data: p.data, name: p.name }
+          : { mediaType: p.mediaType, data: p.data })),
+      }, 120000);
       hostRunning = true;
       session.pending.length = 0;
       broadcastStatus();
@@ -862,6 +902,11 @@ async function sessionSay(text) {
       }
       appendEvent("system", { text: "⚠ 客户端会话发送失败，回退无头引擎：" + msg.slice(0, 300) });
     }
+  }
+
+  if (imageParts.length) {
+    appendEvent("system", { text: "⚠ 当前没有可用的桌面宿主会话，图片无法发送（无头引擎不支持图片）" });
+    return { ok: false, error: "images need the desktop host", seq: ev.seq };
   }
 
   const waking = autoWakeOn();
@@ -2463,7 +2508,7 @@ async function route(method, pathname, q, body, res) {
     err(404, `unknown action: ${method} ${pathname}`);
   }
 
-  if (pathname === "/session/say" && method === "POST") return { json: await sessionSay(body.text) };
+  if (pathname === "/session/say" && method === "POST") return { json: await sessionSay(body.text, body.images) };
   if (pathname === "/session/stop" && method === "POST") return { json: await sessionStop() };
   if (pathname === "/session/claim" && method === "POST") return { json: sessionClaim() };
   if (pathname === "/session/post" && method === "POST") return { json: sessionPost(body.kind, body) };
@@ -2494,7 +2539,7 @@ async function route(method, pathname, q, body, res) {
 async function handleExtRequest(method, params) {
   log(`ext request: ${method}` + (method === "sessionSay" ? ` text=${String(params.text || "").slice(0, 40)}` : ""));
   switch (method) {
-    case "sessionSay": return await sessionSay(params.text);
+    case "sessionSay": return await sessionSay(params.text, params.images);
     case "sessionStop": return await sessionStop();
     case "sessionEvents": return sessionEvents(Number(params.since || 0));
     case "sessionStatus": return sessionStatusPayload();

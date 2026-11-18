@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.0 — 2026-11-18
+
+- 侧边栏支持**发送图片**，逻辑对齐客户端 composer：`Ctrl/Cmd+V` 粘贴截图、拖入文件均可；
+  附件以缩略图托盘显示，右上角 ✕ 移除；单张 ≤4MB、最多 8 张。
+- 链路打通三层：扩展 → 桥接 `POST /session/say {text, images}` → 宿主 `hostPrompt`。宿主按
+  DSH 的 `EncodedImageAttachment` 规范组装 `{type:'image', mediaType, data}` prompt content，
+  并在发送前用部署的 `attachments.imageLimits` 预检（数量 / 单张 / 总量），拒绝时给出可读错误。
+- 已发送的用户消息在侧边栏显示图片标签（名称 + 大小）；没有桌面宿主时明确拒绝图片，不静默丢弃。
+- 扩展 1.4.0、桥接 1.3.0、插件 2.2.0、安装包 1.5.0。
+
 ## v1.4.4 — 2026-11-15
 
 - 仓库根新增 `package.json` 与 `cordis.patch.yml`，声明 `dsh.bundle`，可直接通过
