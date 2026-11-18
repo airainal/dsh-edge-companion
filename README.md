@@ -349,6 +349,24 @@ dsh-edge-companion/
 
 ---
 
+## 发版（维护者）
+
+每次插件更新默认两步：**推代码** → **一条命令发版**。
+
+```powershell
+# 1) 改版本号（package.json / extension/manifest.json / dsh-plugin/package.json）+ CHANGELOG，然后推送
+powershell -ExecutionPolicy Bypass -File C:\Users\a\.agents\skills\github-push\scripts\push.ps1 -RepoPath . -Message "feat: ..."
+
+# 2) 发版：自动打 tgz、建 tag、等 CI 出 zip、补齐校验和与发布说明
+powershell -ExecutionPolicy Bypass -File scripts\finalize-release.ps1 -Tag v1.6.0 -CreateTag
+```
+
+`-CreateTag` 推 tag 会触发 `.github/workflows/release.yml`（构建便携 zip 并创建 Release）；
+`scripts/finalize-release.ps1` 随后补 npm tarball、用线上摘要重写 `SHA256SUMS.txt`（同时覆盖 zip 与 tgz）、
+并把发布说明渲染为 CHANGELOG 段落 + `scripts/release-template.md`。
+
+发版验收：Release 必须同时含 `.zip`、`.tgz`、`SHA256SUMS.txt`（两行），且说明里的安装命令指向真实资产名。
+
 ## License
 
 [MIT](LICENSE) © 2026 DSH Edge Bridge contributors
