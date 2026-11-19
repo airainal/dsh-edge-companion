@@ -21,6 +21,18 @@ for (const file of [path.join(root, "bridge", "session-log.jsonl"), path.join(ro
   } catch {}
 }
 events = events.map((e) => ({ ...e, text: e.text ? String(e.text).slice(0, 700) : e.text }));
+// 历史分页需要一个够长的样本：不足 120 条时用确定性合成数据补齐（上拉分页验收用）。
+if (events.length < 100) {
+  const synth = [];
+  for (let i = 1; i <= 120; i++) {
+    synth.push(i % 2
+      ? { seq: i, kind: "user", text: `第 ${Math.ceil(i / 2)} 条历史指令（分页测试）` }
+      : { seq: i, kind: "assistant", text: `第 ${Math.ceil(i / 2)} 条历史回复：用于验证上拉分页与滚动位置的占位内容。` });
+  }
+  events = synth;
+} else {
+  events = events.slice(-120);
+}
 
 const now = Date.now();
 const sessions = [
@@ -51,6 +63,7 @@ const stub = `
   const ENGINE = ${JSON.stringify(engine)};
   const listeners = [];
   function dispatch(m) { for (const fn of listeners) fn(m); }
+  window.__dispatch = dispatch; // 验收脚本可以注入 status/engine 帧
   const fakePort = {
     onMessage: { addListener(fn) { listeners.push(fn); } },
     onDisconnect: { addListener() {} },
@@ -59,7 +72,19 @@ const stub = `
       window.__sent.push(msg);
       if (msg.type === "say") setTimeout(() => dispatch({ type: "sayOk", ok: true }), 10);
       switch (msg.type) {
-        case "loadEvents": setTimeout(() => dispatch({ type: "events", events: EVENTS, now: EVENTS.length }), 10); break;
+        case "loadEvents": {
+          const tail = Math.max(1, Number(msg.tail || 30));
+          const start = Math.max(0, EVENTS.length - tail);
+          setTimeout(() => dispatch({
+            type: "events",
+            events: EVENTS.slice(start),
+            total: EVENTS.length,
+            hasMore: start > 0,
+            older: msg.older === true,
+            tail,
+          }), 10);
+          break;
+        }
         case "getTabs": setTimeout(() => dispatch({ type: "tabs", tabs: TABS }), 10); break;
         case "getEngine": setTimeout(() => dispatch({ type: "engine", engine: ENGINE }), 10); break;
         case "getModels": setTimeout(() => dispatch({ type: "models", provider: "deepseek-account", selected: MODELS[0].id, models: MODELS }), 10); break;

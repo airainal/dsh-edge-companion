@@ -72,6 +72,7 @@ function updateSendButton() {
 function setRunning(next) {
   running = !!next;
   workerRunning = running;
+  if (running) lastEventAt = Date.now();
   updateSendButton();
   if (running) {
     pendingEl().textContent = "DSH 正在执行…";
@@ -82,12 +83,40 @@ function setRunning(next) {
   }
 }
 
-function renderStatus(m) {
-  connected = !!m.connected;
-  if (typeof m.running === "boolean") setRunning(m.running);
+let disconnectTimer = null;
+let zcodeWarned = false;
+
+function applyConnectionState(next) {
+  connected = !!next;
   $("dot").classList.toggle("on", connected);
   updateBanner();
   updateDisabled();
+}
+
+function renderStatus(m) {
+  const isConn = m.connected === true;
+  // 桥接重连往往只有几百毫秒：先不认断线，避免横幅/输入框闪一下。
+  // 恢复则立刻生效。
+  if (isConn) {
+    if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null; }
+    applyConnectionState(true);
+  } else if (!disconnectTimer) {
+    if (connected) {
+      disconnectTimer = setTimeout(() => { disconnectTimer = null; applyConnectionState(false); }, 1200);
+    } else {
+      applyConnectionState(false);
+    }
+  }
+  if (typeof m.running === "boolean") setRunning(m.running);
+  const warnings = m.warnings || {};
+  if (warnings.zcodeBridge && !zcodeWarned) {
+    zcodeWarned = true;
+    const d = document.createElement("div");
+    d.className = "sysline warn";
+    d.textContent = "⚠ 检测到 ZCode 桥接（127.0.0.1:8765）同时运行：两套扩展会抢同一标签页的调试会话，任务可能卡住。建议在 edge://extensions 停用 “ZCode Edge Bridge”。";
+    $("chat").appendChild(d);
+    scrollBottom();
+  }
 }
 function updateBanner() {
   const b = $("banner");
@@ -353,6 +382,59 @@ function scrollBottom() { $("chat").scrollTop = $("chat").scrollHeight; }
 let lastUserSeq = 0;
 let workerRunning = false;
 
+// ---------- 历史分页（先加载最新一段，上拉再取更早） ----------
+const HISTORY_PAGE = 30;
+let historyWindow = HISTORY_PAGE;
+let historyTotal = 0;
+let historyHasMore = false;
+let loadingOlder = false;
+let lastEventAt = Date.now();
+
+/** 用一批事件重画聊天区；preserve=true 时保持当前阅读位置（上拉加载更早）。 */
+function renderHistory(events, { preserve = false } = {}) {
+  const chat = $("chat");
+  const prevHeight = preserve ? chat.scrollHeight : 0;
+  const prevTop = preserve ? chat.scrollTop : 0;
+
+  chat.innerHTML = "";
+  lastSeq = 0;
+  lastUserSeq = 0;
+  workerRunning = false;
+  running = false;
+  liveStreams.clear();
+  lastToolBody = null;
+  lastToolSummary = null;
+  $("pending").classList.add("hidden");
+
+  const frag = document.createDocumentFragment();
+  renderTarget = frag;
+  try {
+    if (!historyHasMore) {
+      const cap = document.createElement("div");
+      cap.className = "history-cap";
+      cap.textContent = "— 会话开头 —";
+      frag.appendChild(cap);
+    }
+    for (const ev of events || []) appendEvent(ev, { scroll: false });
+  } finally {
+    renderTarget = null;
+  }
+  chat.appendChild(frag);
+  updateSendButton();
+  lastEventAt = Date.now();
+  if (preserve && prevHeight) chat.scrollTop = chat.scrollHeight - prevHeight + prevTop;
+  else scrollBottom();
+}
+
+function requestOlderHistory() {
+  const chat = $("chat");
+  if (!historyHasMore || loadingOlder) return;
+  if (historyTotal && historyWindow >= historyTotal) return;
+  loadingOlder = true;
+  historyWindow += HISTORY_PAGE;
+  port.postMessage({ type: "loadEvents", tail: historyWindow, older: true });
+}
+
 function clearPendingIfAfter(seq) {
   if (lastUserSeq && seq > lastUserSeq && !workerRunning) {
     $("pending").classList.add("hidden");
@@ -369,8 +451,12 @@ function getLive(streamId) {
   return live;
 }
 
+// 批量渲染历史时把事件写进离屏 fragment，避免逐条触发滚动/布局。
+let renderTarget = null;
 function appendEvent(ev, { scroll = true } = {}) {
-  const chat = $("chat");
+  const chat = renderTarget || $("chat");
+  if (renderTarget) scroll = false;
+  lastEventAt = Date.now();
   const empty = chat.querySelector(".empty");
   if (empty) empty.remove();
   const stick = scroll && nearBottom();
@@ -546,7 +632,12 @@ function resetChat(text) {
   lastToolBody = null;
   lastToolSummary = null;
   $("pending").classList.add("hidden");
-  port.postMessage({ type: "loadEvents", since: 0 });
+  // 只取最新一页；更早的在用户上拉时按需加载，避免长会话一次灌入几百条。
+  historyWindow = HISTORY_PAGE;
+  historyTotal = 0;
+  historyHasMore = false;
+  loadingOlder = false;
+  port.postMessage({ type: "loadEvents", tail: historyWindow });
 }
 
 // ---------- 端口消息 ----------
@@ -577,9 +668,28 @@ function handlePortMessage(m) {
     }
   }
   if (m.type === "events") {
-    for (const ev of m.events || []) appendEvent(ev, { scroll: false });
-    if (m.events && m.events.length) {
-      scrollBottom();
+    const rawList = Array.isArray(m.events) ? m.events : [];
+    const serverTotal = Number(m.total || 0);
+    const win = Math.max(1, Number(m.tail) || (m.older ? historyWindow : HISTORY_PAGE));
+    let list = rawList;
+    let hasMore;
+    if (serverTotal > 0) {
+      historyTotal = serverTotal;
+      hasMore = m.hasMore === true;
+    } else {
+      // 旧版桥接不认识 tail：它会把全部事件发回来，这里自己裁到窗口，
+      // 保证升级顺序（先换扩展、后重启桥）也不会一次性渲染几百条。
+      historyTotal = rawList.length;
+      if (rawList.length > win) list = rawList.slice(-win);
+      hasMore = rawList.length > win;
+    }
+    historyWindow = win;
+    historyHasMore = hasMore;
+    if (m.older) loadingOlder = false;
+    if (m.older) {
+      renderHistory(list, { preserve: true });
+    } else if (list.length) {
+      renderHistory(list, { preserve: false });
     } else {
       const e0 = $("chat").querySelector(".empty");
       if (e0) e0.textContent = "已连上 DSH 会话通道。下第一条指令试试（例如：打开 example.com 告诉我标题）";
@@ -760,6 +870,26 @@ $("input").addEventListener("paste", (e) => {
     void addImageFiles(files);
   });
 })();
+
+// ---------- 历史分页触发器 / 卡住自愈 ----------
+$("chat").addEventListener("scroll", () => {
+  const c = $("chat");
+  if (c.scrollTop > 60) return;
+  requestOlderHistory();
+});
+
+// 长时间没有任何事件但界面仍显示"正在执行"时，向宿主核对一次真实状态，
+// 避免侧边栏停在过期状态（例如 turn/end 帧在断线期间丢失）。
+setInterval(() => {
+  if (!running) return;
+  const idle = Date.now() - lastEventAt;
+  if (idle < 60000) return;
+  port.postMessage({ type: "getEngine" });
+  if (idle > 5 * 60000) {
+    pendingEl().textContent = "⚠ 超过 5 分钟没有进展：可点停止按钮，或关掉侧边栏重开";
+    pendingEl().classList.remove("hidden");
+  }
+}, 20000);
 
 // ---------- 标签页 ----------
 function renderTabs(tabs) {

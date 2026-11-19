@@ -1,6 +1,6 @@
 {
   "name": "dsh-edge-companion",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Connects DeepSeek Harness to the user's logged-in Microsoft Edge: local bridge, MV3 side panel, and real-tab control over CDP.",
   "keywords": [
     "dsh",

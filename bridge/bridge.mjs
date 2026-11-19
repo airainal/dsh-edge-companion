@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import net from "node:net";
 import zlib from "node:zlib";
 import { spawn, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -29,9 +30,35 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
+
+// ZCode 的桥接默认监听 8765，它的扩展与本扩展都用 chrome.debugger 抢同一标签页：
+// 同时运行会让调试条显示另一个扩展的名字，并让 CDP 指令偶发失败（任务"卡住"）。
+// 探针只做一次本地 TCP 连接，结果缓存 10s，不给 /status 增加压力。
+let zcodeProbe = { at: 0, active: false };
+function zcodeBridgeActive() {
+  const now = Date.now();
+  if (now - zcodeProbe.at < 10000) return zcodeProbe.active;
+  zcodeProbe.at = now;
+  try {
+    const socket = net.connect({ host: "127.0.0.1", port: 8765 });
+    socket.setTimeout(300);
+    socket.once("connect", () => { zcodeProbe.active = true; socket.destroy(); });
+    socket.once("timeout", () => socket.destroy());
+    socket.once("error", () => { zcodeProbe.active = false; socket.destroy(); });
+  } catch { zcodeProbe.active = false; }
+  return zcodeProbe.active;
+}
+
+// 探针是异步的：启动时预热一次，之后每 8 秒刷新，/status 只读缓存值。
+try {
+  zcodeProbe.at = 0;
+  zcodeBridgeActive();
+  const timer = setInterval(() => { zcodeProbe.at = 0; zcodeBridgeActive(); }, 8000);
+  if (typeof timer.unref === "function") timer.unref();
+} catch {}
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 // 同时写控制台与 bridge.log（桌面版 Electron 作为 Node 时 stdout 可能不可见）
@@ -814,6 +841,7 @@ function broadcastStatus() {
     running: !!hostRunning,
     codex: !!hostCodex,
     sessionId: active.sessionId || "",
+    warnings: { zcodeBridge: zcodeBridgeActive() },
   };
   if (ext && !ext.conn.closed) {
     try { ext.conn.sendText(JSON.stringify({ method: "status", params: payload })); } catch {}
@@ -954,8 +982,18 @@ function sessionPost(kind, data = {}) {
   return { ok: true, seq: ev.seq };
 }
 
-function sessionEvents(since = 0) {
-  return { events: session.events.filter((e) => e.seq > since), now: session.nextSeq };
+// tail > 0 时返回"最后 tail 条"，并告诉调用方是否还有更早的（侧边栏上拉分页用）；
+// 否则维持旧的 since 语义（增量拉取）。
+function sessionEvents(since = 0, tail = 0) {
+  const all = session.events;
+  const size = Math.floor(Number(tail) || 0);
+  if (size > 0) {
+    const start = Math.max(0, all.length - size);
+    const events = all.slice(start);
+    return { events, now: session.nextSeq, total: all.length, hasMore: start > 0 };
+  }
+  const events = all.filter((e) => e.seq > since);
+  return { events, now: session.nextSeq, total: all.length, hasMore: false };
 }
 
 // ============================================================
@@ -2420,6 +2458,7 @@ async function route(method, pathname, q, body, res) {
         sessions: hostSessionsCache.length,
       },
       session: { pending: session.pending.length, events: session.events.length, now: session.nextSeq },
+      warnings: { zcodeBridge: zcodeBridgeActive() },
     } };
   }
 
@@ -2512,7 +2551,9 @@ async function route(method, pathname, q, body, res) {
   if (pathname === "/session/stop" && method === "POST") return { json: await sessionStop() };
   if (pathname === "/session/claim" && method === "POST") return { json: sessionClaim() };
   if (pathname === "/session/post" && method === "POST") return { json: sessionPost(body.kind, body) };
-  if (pathname === "/session/events" && method === "GET") return { json: sessionEvents(Number(q.get("since") || 0)) };
+  if (pathname === "/session/events" && method === "GET") {
+    return { json: sessionEvents(Number(q.get("since") || 0), Number(q.get("tail") || 0)) };
+  }
   if (pathname === "/session/reset" && method === "POST") return { json: await newActiveSession() };
   if (pathname === "/session/new" && method === "POST") return { json: await newActiveSession() };
   if (pathname === "/session/select" && method === "POST") return { json: await selectSession(body.id) };
@@ -2541,7 +2582,7 @@ async function handleExtRequest(method, params) {
   switch (method) {
     case "sessionSay": return await sessionSay(params.text, params.images);
     case "sessionStop": return await sessionStop();
-    case "sessionEvents": return sessionEvents(Number(params.since || 0));
+    case "sessionEvents": return sessionEvents(Number(params.since || 0), Number(params.tail || 0));
     case "sessionStatus": return sessionStatusPayload();
     case "sessions": {
       return { sessions: mergedSessions(params.refresh === true), current: active.sessionId, cwd: engineCwd(), host: hostReady() };

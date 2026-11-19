@@ -33,6 +33,19 @@ function currentStatus() {
   };
 }
 
+/** 等 WebSocket 恢复可写；用于"发送时恰好断线"的一次性重试。 */
+function waitWsOpen(timeoutMs) {
+  const deadline = Date.now() + Math.max(0, timeoutMs);
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (ws && ws.readyState === 1) return resolve(true);
+      if (Date.now() >= deadline) return resolve(false);
+      setTimeout(tick, 200);
+    };
+    tick();
+  });
+}
+
 async function pushTabsToPort(port) {
   try {
     const tabs = await chrome.tabs.query({});
@@ -68,10 +81,18 @@ chrome.runtime.onConnect.addListener((port) => {
     if (m.type === "getTabs") pushTabsToPort(port);
     if (m.type === "getEngine") pushEngineToPort(port);
     if (m.type === "say" && (typeof m.text === "string" || Array.isArray(m.images))) {
+      const payload = { text: typeof m.text === "string" ? m.text : "" };
+      if (Array.isArray(m.images) && m.images.length) payload.images = m.images;
       try {
-        const payload = { text: typeof m.text === "string" ? m.text : "" };
-        if (Array.isArray(m.images) && m.images.length) payload.images = m.images;
-        const r = await bridgeCall("sessionSay", payload, 150000);
+        let r;
+        try {
+          r = await bridgeCall("sessionSay", payload, 150000);
+        } catch (e) {
+          // 一次瞬时断线不该让用户重发：等套接字回来再试一次。
+          await waitWsOpen(4000);
+          if (!ws || ws.readyState !== 1) throw e;
+          r = await bridgeCall("sessionSay", payload, 150000);
+        }
         port.postMessage({ type: "sayOk", ...r });
         pushEngineToPort(port);
       } catch (e) {
@@ -89,8 +110,10 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (m.type === "loadEvents") {
       try {
-        const r = await bridgeCall("sessionEvents", { since: Number(m.since || 0) });
-        port.postMessage({ type: "events", ...r });
+        const params = { since: Number(m.since || 0) };
+        if (Number(m.tail || 0) > 0) params.tail = Number(m.tail);
+        const r = await bridgeCall("sessionEvents", params);
+        port.postMessage({ type: "events", ...r, tail: Number(m.tail || 0), older: m.older === true });
       } catch (e) {
         port.postMessage({ type: "eventsError", error: String((e && e.message) || e) });
       }
