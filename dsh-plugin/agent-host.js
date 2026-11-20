@@ -70,8 +70,9 @@ function cancelPendingPrompts() {
 function registerPromptBridge(rootCtx) {
   if (!rootCtx || typeof rootCtx.on !== "function") return;
   try {
-    rootCtx.on("approval/request", async (req, next) => {
-      try {
+    // prepend：必须排在客户端自己的应答者之前，否则请求会被客户端先领走。
+    const on = (name, handler) => rootCtx.on(name, handler, { prepend: true });
+    on("approval/request", async (req, next) => {      try {
         const sessionId = req && req.agent ? String(req.agent.id) : "";
         if (!claimPromptFor(sessionId)) return await next();
         if (req.signal && req.signal.aborted) return "cancelled";
@@ -96,7 +97,7 @@ function registerPromptBridge(rootCtx) {
       }
     });
 
-    rootCtx.on("user-questions/request", async (request, next) => {
+    on("user-questions/request", async (request, next) => {
       try {
         const sessionId = request && request.agent ? String(request.agent.id) : "";
         if (!claimPromptFor(sessionId)) return await next();
