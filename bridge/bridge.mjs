@@ -30,7 +30,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.3.1";
+const VERSION = "1.3.2";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 
@@ -241,7 +241,7 @@ function attachExtension(conn) {
 
   conn.onclose = () => {
     clearTimeout(helloTimer);
-    if (ext === session) { ext = null; log("extension disconnected"); }
+    if (ext === session) { ext = null; log("extension disconnected"); syncUiAvailability(); }
     if (host === session) { host = null; log("desktop agent host disconnected"); broadcastStatus(); }
   };
   conn.ontext = (text) => {
@@ -279,6 +279,7 @@ function attachExtension(conn) {
       ext = session;
       if (msg.id != null) conn.sendText(JSON.stringify({ id: msg.id, result: { ok: true } }));
       log("extension hello ok, extVersion =", session.hello.extVersion || "?", "install =", installId.slice(0, 8) || "?");
+      syncUiAvailability();
       return;
     }
     if (!session.adopted) return; // 未握手前不处理其它消息
@@ -337,6 +338,13 @@ function hostReady() {
   return !!(host && !host.conn.closed && host.adopted);
 }
 
+/** 告诉宿主插件：侧边栏（扩展）在不在线，决定审批/提问由谁作答。 */
+function syncUiAvailability() {
+  if (!hostReady()) return;
+  const available = !!(ext && !ext.conn.closed && ext.authenticated);
+  hostCall("hostUi", { available }).catch(() => {});
+}
+
 function adoptHost(session, msg) {
   if (TOKEN && msg.params?.token !== TOKEN) {
     log("agent host hello: bad token, closing");
@@ -367,6 +375,7 @@ function adoptHost(session, msg) {
       try { session.conn.sendText(JSON.stringify({ method: "agentReady", params: { bridgeVersion: VERSION } })); } catch {}
       log("desktop agent host ready, version =", session.hello.version || "?");
       broadcastStatus();
+      syncUiAvailability();
       if (active.sessionId) {
         hostCall("hostFollow", { sessionId: active.sessionId })
           .then(() => refreshHostModels())
@@ -407,6 +416,33 @@ function handleHostMessage(session, msg) {
     case "hostFrame":
       handleHostFrame(msg.params?.sessionId, msg.params?.frame);
       return;
+    case "hostApproval": {
+      const p = msg.params || {};
+      if (p && p.id) {
+        appendEvent("approval", {
+          id: String(p.id),
+          sessionId: String(p.sessionId || ""),
+          toolName: String(p.toolName || ""),
+          callId: String(p.callId || ""),
+          reason: String(p.reason || ""),
+          expiresAt: Number(p.expiresAt || 0),
+        });
+      }
+      return;
+    }
+    case "hostQuestion": {
+      const p = msg.params || {};
+      if (p && p.id) {
+        appendEvent("question", {
+          id: String(p.id),
+          sessionId: String(p.sessionId || ""),
+          callId: String(p.callId || ""),
+          timed: p.timed === true,
+          questions: Array.isArray(p.questions) ? p.questions : [],
+        });
+      }
+      return;
+    }
     case "hostStatus":
       if (msg.params && typeof msg.params.running === "boolean") hostRunning = msg.params.running;
       if (typeof msg.params?.codex === "boolean") hostCodex = msg.params.codex;
@@ -2567,6 +2603,9 @@ async function route(method, pathname, q, body, res) {
   }
   if (pathname === "/engine/model" && method === "POST") return { json: await setModel(body) };
 
+  if (pathname === "/session/approval" && method === "POST") return { json: await handleExtRequest("approvalAnswer", body) };
+  if (pathname === "/session/question" && method === "POST") return { json: await handleExtRequest("questionAnswer", body) };
+
   if (pathname === "/shutdown" && method === "POST") {
     sendJson(res, 200, { ok: true });
     setTimeout(() => process.exit(0), 100);
@@ -2584,6 +2623,18 @@ async function handleExtRequest(method, params) {
     case "sessionStop": return await sessionStop();
     case "sessionEvents": return sessionEvents(Number(params.since || 0), Number(params.tail || 0));
     case "sessionStatus": return sessionStatusPayload();
+    case "approvalAnswer": {
+      const decision = String(params.decision || "");
+      if (!["allowed-once", "rejected", "cancelled"].includes(decision)) {
+        err(400, "decision 仅支持 allowed-once | rejected | cancelled");
+      }
+      return await hostCall("hostPromptAnswer", { id: String(params.id || ""), decision }, 20000);
+    }
+    case "questionAnswer": {
+      const answer = params.answer;
+      if (!answer || typeof answer !== "object" || !Array.isArray(answer.answers)) err(400, "answer.answers 必须是数组");
+      return await hostCall("hostPromptAnswer", { id: String(params.id || ""), answer }, 20000);
+    }
     case "sessions": {
       return { sessions: mergedSessions(params.refresh === true), current: active.sessionId, cwd: engineCwd(), host: hostReady() };
     }

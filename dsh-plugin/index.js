@@ -39,7 +39,7 @@ function findNode() {
 
 // Keep in sync with bridge/bridge.mjs VERSION: a mismatch makes the plugin treat
 // the running bridge as outdated and replace it on the next DSH start.
-const BRIDGE_VERSION = "1.3.1";
+const BRIDGE_VERSION = "1.3.2";
 
 async function stopOutdatedBridge() {
   try {

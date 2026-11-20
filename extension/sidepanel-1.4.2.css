@@ -453,6 +453,46 @@ textarea#input::placeholder { color: var(--dim-2); }
   padding: 5px 8px; margin: 4px 2px; line-height: 1.5;
 }
 
+/* ---- 审批 / 提问卡（结构对齐客户端 ApprovalCard / QuestionComposer） ---- */
+.prompt-card {
+  margin: 6px 2px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+.prompt-card.answered { opacity: .72; }
+.prompt-strip { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #b45309; letter-spacing: .3px; }
+.prompt-dot { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; display: inline-block; }
+.prompt-body { margin-top: 6px; }
+.prompt-headline { font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.4; }
+.prompt-desc { margin: 4px 0 0; font-size: 11.5px; color: var(--dim); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.prompt-q + .prompt-q { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.prompt-q-head { font-size: 12.5px; font-weight: 600; color: var(--fg); line-height: 1.45; }
+.prompt-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.prompt-opt {
+  font: inherit; font-size: 11.5px; padding: 5px 10px;
+  border-radius: 8px; border: 1px solid var(--line-strong);
+  background: var(--card); color: var(--fg); cursor: pointer;
+}
+.prompt-opt:hover { border-color: var(--accent); }
+.prompt-opt.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.prompt-custom {
+  margin-top: 7px; width: 100%; box-sizing: border-box;
+  font: inherit; font-size: 12px; padding: 6px 8px;
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--bg); color: var(--fg);
+}
+.prompt-custom:focus { outline: none; border-color: var(--accent); }
+.prompt-error { color: #b91c1c; font-size: 11px; margin-top: 4px; }
+.prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 9px; }
+.prompt-btn {
+  font: inherit; font-size: 12px; padding: 6px 12px;
+  border-radius: 9px; border: 1px solid var(--line-strong);
+  background: var(--card); color: var(--fg); cursor: pointer;
+}
+.prompt-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.prompt-btn:disabled { opacity: .55; cursor: default; }
+.prompt-status { margin-top: 6px; font-size: 10.5px; color: var(--dim-2); text-align: right; min-height: 12px; }
+
 @media (prefers-reduced-motion: reduce) {
   .views, .dd-menu, .dd-chev, #btn-send, .icon-btn { transition: none !important; }
 }

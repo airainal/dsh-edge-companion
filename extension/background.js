@@ -99,6 +99,22 @@ chrome.runtime.onConnect.addListener((port) => {
         port.postMessage({ type: "sayError", error: String((e && e.message) || e) });
       }
     }
+    if (m.type === "approvalAnswer" && typeof m.id === "string") {
+      try {
+        const r = await bridgeCall("approvalAnswer", { id: m.id, decision: m.decision }, 30000);
+        port.postMessage({ type: "promptAck", id: m.id, ok: !(r && r.ok === false), error: r && r.ok === false ? r.error : undefined });
+      } catch (e) {
+        port.postMessage({ type: "promptAck", id: m.id, ok: false, error: String((e && e.message) || e) });
+      }
+    }
+    if (m.type === "questionAnswer" && typeof m.id === "string") {
+      try {
+        const r = await bridgeCall("questionAnswer", { id: m.id, answer: m.answer }, 30000);
+        port.postMessage({ type: "promptAck", id: m.id, ok: !(r && r.ok === false), error: r && r.ok === false ? r.error : undefined });
+      } catch (e) {
+        port.postMessage({ type: "promptAck", id: m.id, ok: false, error: String((e && e.message) || e) });
+      }
+    }
     if (m.type === "stop") {
       try {
         const r = await bridgeCall("sessionStop", {}, 20000);

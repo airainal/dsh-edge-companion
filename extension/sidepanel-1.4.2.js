@@ -605,6 +605,10 @@ function appendEvent(ev, { scroll = true } = {}) {
       lastToolBody = body;
       lastToolSummary = sum;
     }
+  } else if (ev.kind === "approval") {
+    chat.appendChild(buildApprovalCard(ev));
+  } else if (ev.kind === "question") {
+    chat.appendChild(buildQuestionCard(ev));
   } else if (ev.kind === "system") {
     const d = document.createElement("div");
     d.className = "sysline";
@@ -640,9 +644,189 @@ function resetChat(text) {
   port.postMessage({ type: "loadEvents", tail: historyWindow });
 }
 
+// ---------- 审批 / 提问作答（窗口结构照客户端 ApprovalCard / QuestionComposer） ----------
+function promptCardShell(id, kind) {
+  const card = document.createElement("div");
+  card.className = "prompt-card " + kind;
+  card.dataset.promptId = String(id || "");
+  return card;
+}
+
+function finishPrompt(card, status, message) {
+  if (card.dataset.answered === "1") return;
+  card.dataset.answered = "1";
+  card.classList.add("answered");
+  for (const b of card.querySelectorAll("button")) b.disabled = true;
+  const el = card.querySelector(".prompt-status");
+  if (el) el.textContent = status;
+  port.postMessage(message);
+}
+
+function buildApprovalCard(ev) {
+  const card = promptCardShell(ev.id, "approval");
+  card.innerHTML =
+    '<div class="prompt-strip"><span class="prompt-dot"></span>等待审批</div>' +
+    '<div class="prompt-body">' +
+      '<div class="prompt-headline"></div>' +
+      '<p class="prompt-desc"></p>' +
+    '</div>' +
+    '<div class="prompt-actions">' +
+      '<button type="button" class="prompt-btn" data-act="reject">拒绝</button>' +
+      '<button type="button" class="prompt-btn primary" data-act="allow">允许一次</button>' +
+    '</div>' +
+    '<div class="prompt-status"></div>';
+  const tool = String(ev.toolName || "").trim();
+  const reason = String(ev.reason || "").trim();
+  const headline = card.querySelector(".prompt-headline");
+  headline.textContent = tool ? "工具 " + tool + " 请求越权执行" : "操作需要你的确认";
+  const desc = card.querySelector(".prompt-desc");
+  if (reason) desc.textContent = reason; else desc.remove();
+  const act = (decision) => finishPrompt(
+    card,
+    decision === "allowed-once" ? "已允许（一次）" : "已拒绝",
+    { type: "approvalAnswer", id: String(ev.id || ""), decision },
+  );
+  card.querySelector('[data-act="allow"]').addEventListener("click", () => act("allowed-once"));
+  card.querySelector('[data-act="reject"]').addEventListener("click", () => act("rejected"));
+  return card;
+}
+
+function showPromptError(card, text) {
+  const el = card.querySelector(".prompt-error");
+  if (el) el.textContent = text;
+}
+
+function buildQuestionCard(ev) {
+  const card = promptCardShell(ev.id, "question");
+  const questions = Array.isArray(ev.questions) ? ev.questions : [];
+  card.innerHTML =
+    '<div class="prompt-strip"><span class="prompt-dot"></span>等待回答</div>' +
+    '<div class="prompt-body"><div class="prompt-list"></div></div>' +
+    '<div class="prompt-error"></div>' +
+    '<div class="prompt-actions"><button type="button" class="prompt-btn primary" data-act="submit">提交</button></div>' +
+    '<div class="prompt-status"></div>';
+  const list = card.querySelector(".prompt-list");
+  const states = new Map();
+
+  for (const q of questions) {
+    const state = { selected: new Set(), custom: "", intent: "" };
+    states.set(String(q.id || ""), state);
+    const block = document.createElement("div");
+    block.className = "prompt-q";
+    const head = document.createElement("div");
+    head.className = "prompt-q-head";
+    head.textContent = q.header ? q.header + " · " + q.question : q.question;
+    block.appendChild(head);
+    if (q.detail) {
+      const d = document.createElement("p");
+      d.className = "prompt-desc";
+      d.textContent = q.detail;
+      block.appendChild(d);
+    }
+    const intent = q.intent && q.intent.kind === "approval" ? q.intent : null;
+    if (intent) {
+      const row = document.createElement("div");
+      row.className = "prompt-options";
+      const mk = (label, value, primary) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "prompt-opt" + (primary ? " selected" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          state.intent = value;
+          for (const s of row.querySelectorAll(".prompt-opt")) s.classList.remove("selected");
+          b.classList.add("selected");
+        });
+        row.appendChild(b);
+      };
+      mk(intent.rejectLabel || intent.reject || "拒绝", "reject", false);
+      mk(intent.approveLabel || intent.approve || "允许", "approve", false);
+      block.appendChild(row);
+      if (intent.question) {
+        const q2 = document.createElement("p");
+        q2.className = "prompt-desc";
+        q2.textContent = intent.question;
+        block.insertBefore(q2, row);
+      }
+    } else if (Array.isArray(q.options) && q.options.length) {
+      const row = document.createElement("div");
+      row.className = "prompt-options";
+      for (const o of q.options) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "prompt-opt";
+        b.textContent = o.label;
+        if (o.description) b.title = o.description;
+        b.addEventListener("click", () => {
+          if (q.multiSelect === true) {
+            if (state.selected.has(o.label)) { state.selected.delete(o.label); b.classList.remove("selected"); }
+            else { state.selected.add(o.label); b.classList.add("selected"); }
+          } else {
+            state.selected = new Set([o.label]);
+            for (const s of row.querySelectorAll(".prompt-opt")) s.classList.remove("selected");
+            b.classList.add("selected");
+          }
+        });
+        row.appendChild(b);
+      }
+      block.appendChild(row);
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "prompt-custom";
+    input.placeholder = "输入你的答案";
+    input.addEventListener("input", () => { state.custom = input.value; });
+    block.appendChild(input);
+    list.appendChild(block);
+  }
+
+  card.querySelector('[data-act="submit"]').addEventListener("click", () => {
+    const out = [];
+    for (const q of questions) {
+      const id = String(q.id || "");
+      const s = states.get(id) || { selected: new Set(), custom: "", intent: "" };
+      const custom = String(s.custom || "").trim();
+      if (q.intent && q.intent.kind === "approval") {
+        if (!s.intent) { showPromptError(card, "请选择允许或拒绝。"); return; }
+        const label = s.intent === "approve"
+          ? String(q.intent.approve || "approve")
+          : String(q.intent.reject || "reject");
+        out.push({ id, selected: [label] });
+        continue;
+      }
+      if (s.selected.size === 0 && !custom) { showPromptError(card, "请选择一个选项或填写自定义答案。"); return; }
+      const item = {
+        id,
+        selected: q.multiSelect === true ? [...s.selected] : (custom ? [] : [...s.selected]),
+      };
+      if (custom) item.custom = custom;
+      out.push(item);
+    }
+    finishPrompt(card, "已发送", { type: "questionAnswer", id: String(ev.id || ""), answer: { answers: out } });
+  });
+  return card;
+}
+
+function applyPromptAck(m) {
+  const card = document.querySelector('.prompt-card[data-prompt-id="' + String(m.id || "").replace(/"/g, "") + '"]');
+  if (!card) return;
+  const status = card.querySelector(".prompt-status");
+  if (m.ok) {
+    card.classList.add("answered");
+    card.dataset.answered = "1";
+    for (const b of card.querySelectorAll("button")) b.disabled = true;
+    return;
+  }
+  card.dataset.answered = "0";
+  card.classList.remove("answered");
+  for (const b of card.querySelectorAll("button")) b.disabled = false;
+  if (status) status.textContent = "提交失败：" + (m.error || "未知错误");
+}
+
 // ---------- 端口消息 ----------
 function handlePortMessage(m) {
   if (!m || typeof m !== "object") return;
+  if (m.type === "promptAck") { applyPromptAck(m); return; }
   if (m.type === "status") renderStatus(m);
   if (m.type === "engine") renderEngine(m.engine);
   if (m.type === "sessions") renderSessions(m);

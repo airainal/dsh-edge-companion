@@ -11,7 +11,7 @@
 // as a fallback.
 const PORT = Number(process.env.DSHEDGE_PORT || 8766);
 const WS_URL = `ws://127.0.0.1:${PORT}/ws`;
-const VERSION = "2.0.0";
+const VERSION = "2.3.0";
 
 let ctx = null;
 let ws = null;
@@ -26,6 +26,135 @@ let followAbort = null;
 let followSessionId = null;
 let followActive = false;
 let running = false;
+
+// ---- 审批 / 提问：让 Edge 侧边栏也能像客户端一样作答 ----
+// 客户端通过 `approval/request`、`user-questions/request` 两个 waterfall 事件作答；
+// 这里在「侧边栏在线 + 正是当前跟随会话」时先接管，否则原样 next() 交给客户端。
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
+const QUESTION_TIMEOUT_MS = 10 * 60 * 1000;
+let promptSeq = 0;
+let uiAvailable = false; // 由桥接通过 hostUi 告知：扩展（侧边栏）是否在线
+const pendingPrompts = new Map(); // id -> {kind, resolve, timer, cleanup?}
+
+function localeText(value) {
+  if (!value || typeof value !== "object") return "";
+  if (typeof value.zh === "string" && value.zh) return value.zh;
+  if (typeof value.en === "string" && value.en) return value.en;
+  for (const v of Object.values(value)) if (typeof v === "string" && v) return v;
+  return "";
+}
+
+function claimPromptFor(sessionId) {
+  return !!(uiAvailable && helloOk && sessionId && String(sessionId) === String(followSessionId));
+}
+
+function settlePrompt(id, payload) {
+  const entry = pendingPrompts.get(id);
+  if (!entry) return false;
+  pendingPrompts.delete(id);
+  clearTimeout(entry.timer);
+  if (entry.cleanup) { try { entry.cleanup(); } catch {} }
+  entry.resolve(payload);
+  return true;
+}
+
+function cancelPendingPrompts() {
+  for (const [id, entry] of [...pendingPrompts]) {
+    pendingPrompts.delete(id);
+    clearTimeout(entry.timer);
+    if (entry.cleanup) { try { entry.cleanup(); } catch {} }
+    entry.resolve(entry.kind === "approval" ? "cancelled" : null);
+  }
+}
+
+function registerPromptBridge(rootCtx) {
+  if (!rootCtx || typeof rootCtx.on !== "function") return;
+  try {
+    rootCtx.on("approval/request", async (req, next) => {
+      try {
+        const sessionId = req && req.agent ? String(req.agent.id) : "";
+        if (!claimPromptFor(sessionId)) return await next();
+        if (req.signal && req.signal.aborted) return "cancelled";
+        const id = `ap-${Date.now()}-${++promptSeq}`;
+        const decision = await new Promise((resolve) => {
+          const timer = setTimeout(() => { pendingPrompts.delete(id); resolve("cancelled"); }, APPROVAL_TIMEOUT_MS);
+          pendingPrompts.set(id, { kind: "approval", resolve, timer });
+          const delivered = send("hostApproval", {
+            id,
+            sessionId,
+            toolName: String(req.toolName || ""),
+            callId: req.callId ? String(req.callId) : "",
+            reason: localeText(req.displayReason) || String(req.reason || ""),
+            expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
+          });
+          if (!delivered) { pendingPrompts.delete(id); clearTimeout(timer); resolve("cancelled"); }
+        });
+        return decision === "allowed-once" || decision === "rejected" || decision === "cancelled" ? decision : "cancelled";
+      } catch (e) {
+        log("approval bridge error:", String(e && e.message ? e.message : e));
+        return "cancelled";
+      }
+    });
+
+    rootCtx.on("user-questions/request", async (request, next) => {
+      try {
+        const sessionId = request && request.agent ? String(request.agent.id) : "";
+        if (!claimPromptFor(sessionId)) return await next();
+        const questions = Array.isArray(request.questions) ? request.questions : [];
+        if (!questions.length) return await next();
+        if (request.signal && request.signal.aborted) return await next();
+        const id = `q-${Date.now()}-${++promptSeq}`;
+        const answer = await new Promise((resolve) => {
+          const timer = setTimeout(() => { pendingPrompts.delete(id); resolve(null); }, QUESTION_TIMEOUT_MS);
+          const onAbort = () => { pendingPrompts.delete(id); clearTimeout(timer); resolve(null); };
+          let cleanup;
+          try {
+            if (request.signal && request.signal.addEventListener) {
+              request.signal.addEventListener("abort", onAbort, { once: true });
+              cleanup = () => request.signal.removeEventListener("abort", onAbort);
+            }
+          } catch {}
+          pendingPrompts.set(id, { kind: "question", resolve, timer, cleanup });
+          const delivered = send("hostQuestion", {
+            id,
+            sessionId,
+            callId: request.wait && request.wait.callId ? String(request.wait.callId) : "",
+            timed: !!(request.wait && request.wait.timed),
+            questions: questions.map((q) => ({
+              id: String(q.id || ""),
+              question: String(q.question || ""),
+              detail: q.detail ? String(q.detail) : "",
+              header: q.header ? String(q.header) : "",
+              multiSelect: q.multiSelect === true,
+              options: (Array.isArray(q.options) ? q.options : []).map((o) => ({
+                label: String(o.label || ""),
+                description: o.description ? String(o.description) : "",
+              })),
+              intent: q.intent ? {
+                kind: String(q.intent.kind || ""),
+                approve: String(q.intent.approve || ""),
+                reject: String(q.intent.reject || ""),
+                always: String(q.intent.always || ""),
+                question: localeText(q.intent.display && q.intent.display.question),
+                detail: localeText(q.intent.display && q.intent.display.detail),
+                approveLabel: localeText(q.intent.display && q.intent.display.approve),
+              } : null,
+            })),
+          });
+          if (!delivered) { pendingPrompts.delete(id); clearTimeout(timer); resolve(null); }
+        });
+        if (!answer) return await next();
+        return answer;
+      } catch (e) {
+        log("question bridge error:", String(e && e.message ? e.message : e));
+        return await next();
+      }
+    });
+    log("prompt bridge armed (approval + user questions)");
+  } catch (e) {
+    log("prompt bridge registration failed:", String(e && e.message ? e.message : e));
+  }
+}
 
 function log(...args) {
   console.log("[dsh-agent-host]", ...args);
@@ -128,6 +257,8 @@ function connect(my) {
     if (my !== generation) return;
     connecting = false;
     helloOk = false;
+    uiAvailable = false;
+    cancelPendingPrompts();
     ws = null;
     followAbort?.abort();
     followAbort = null;
@@ -154,6 +285,26 @@ async function handleBridgeRequest(method, params) {
       const sessionId = String(params.sessionId || "");
       await prompt(String(params.text || ""), sessionId, params.images);
       return { accepted: true, sessionId: followSessionId };
+    }
+    case "hostPromptAnswer": {
+      const id = String(params.id || "");
+      const entry = pendingPrompts.get(id);
+      if (!entry) return { ok: false, error: "not pending" };
+      if (entry.kind === "approval") {
+        settlePrompt(id, String(params.decision || "cancelled"));
+      } else {
+        const answer = params.answer;
+        if (!answer || typeof answer !== "object" || !Array.isArray(answer.answers)) {
+          return { ok: false, error: "bad answer" };
+        }
+        settlePrompt(id, { answers: answer.answers });
+      }
+      log("prompt answered from side panel", entry.kind);
+      return { ok: true };
+    }
+    case "hostUi": {
+      uiAvailable = params.available === true;
+      return { ok: true };
     }
     case "hostStop": {
       const sessionId = String(params.sessionId || followSessionId || "");
@@ -342,6 +493,7 @@ async function follow(sessionId, force = false) {
   followAbort = new AbortController();
   followSessionId = sessionId;
   followActive = true;
+  cancelPendingPrompts();
   modelState = null;
   const my = followAbort;
   const signal = my.signal;
@@ -534,6 +686,8 @@ export function startAgentHost(pluginCtx) {
 
   generation += 1;
   const my = generation;
+
+  registerPromptBridge(pluginCtx);
 
   // A HMR reload reuses this module. Tear down the previous socket so the
   // bridge never keeps routing to a disposed plugin context.
