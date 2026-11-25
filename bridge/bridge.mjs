@@ -31,7 +31,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.3.5";
+const VERSION = "1.3.6";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 
@@ -365,12 +365,20 @@ async function flushPendingToHost() {
   if (!sid) return; // 没有活动会话时不自动新建，避免意外切换
   flushingPending = true;
   const items = session.pending.splice(0, session.pending.length);
-  const text = items.map((i) => i.text).filter(Boolean).join("\n\n").trim();
   try {
-    if (text) {
-      appendEvent("system", { text: `⚡ DSH 客户端已连接，自动补发 ${items.length} 条排队指令` });
-      await hostCall("hostPrompt", { sessionId: sid, text });
-      log("flushed pending instructions to host:", items.length);
+    let sent = 0;
+    for (const item of items) {
+      const text = String(item.text || "");
+      const images = Array.isArray(item.images) && item.images.length ? item.images : undefined;
+      if (!text.trim() && !images) continue;
+      const payload = { sessionId: sid, text };
+      if (images) payload.images = images;
+      await hostCall("hostPrompt", payload, 120000);
+      sent += 1;
+    }
+    if (sent) {
+      appendEvent("system", { text: `⚡ DSH 客户端已连接，自动补发 ${sent} 条排队指令` });
+      log("flushed pending instructions to host:", sent);
     }
   } catch (e) {
     session.pending.unshift(...items);
@@ -974,7 +982,17 @@ async function sessionSay(text, images) {
   const ev = appendEvent("user", imageMeta.length
     ? { text: rawText.slice(0, 4000), images: imageMeta }
     : { text: rawText.slice(0, 4000) });
-  session.pending.push({ id: ev.seq, text: ev.text, at: ev.at });
+  session.pending.push({
+    id: ev.seq,
+    text: ev.text,
+    at: ev.at,
+    // 排队期间图片也必须保留，否则宿主稍后连上时只能补发文字。
+    images: imageParts.length
+      ? imageParts.map((p) => (p.name
+        ? { mediaType: p.mediaType, data: p.data, name: p.name }
+        : { mediaType: p.mediaType, data: p.data }))
+      : undefined,
+  });
   if (t) hostEcho.set(t, Date.now());
 
   // 优先使用 DSH 桌面客户端里同一个 Agent（Codex 模式、权限、上下文完全一致）
@@ -1009,14 +1027,17 @@ async function sessionSay(text, images) {
     }
   }
 
-  if (imageParts.length) {
-    appendEvent("system", { text: "⚠ 当前没有可用的桌面宿主会话，图片无法发送（无头引擎不支持图片）" });
-    return { ok: false, error: "images need the desktop host", seq: ev.seq };
+  // 桌面宿主不可用：文字可以走无头兜底（有 preset 的会话会被门禁转成排队）；
+  // 图片只有桌面宿主能发送，所以直接排队，等 flushPendingToHost 补发。
+  if (!imageParts.length) {
+    const waking = autoWakeOn();
+    if (waking) wakeEngine("say");
+    return { ok: true, seq: ev.seq, queued: session.pending.length, waking };
   }
-
-  const waking = autoWakeOn();
-  if (waking) wakeEngine("say");
-  return { ok: true, seq: ev.seq, queued: session.pending.length, waking };
+  appendEvent("system", {
+    text: `⚡ DSH 客户端未连接：指令（含 ${imageParts.length} 张图片）已排队，客户端连上后自动发送`,
+  });
+  return { ok: true, seq: ev.seq, queued: session.pending.length, waitingHost: true };
 }
 
 async function sessionStop() {

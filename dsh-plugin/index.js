@@ -39,7 +39,52 @@ function findNode() {
 
 // Keep in sync with bridge/bridge.mjs VERSION: a mismatch makes the plugin treat
 // the running bridge as outdated and replace it on the next DSH start.
-const BRIDGE_VERSION = "1.3.5";
+const BRIDGE_VERSION = "1.3.6";
+
+function readDiskBridgeVersion(script) {
+  try {
+    const src = fs.readFileSync(script, "utf8");
+    const m = src.match(/const VERSION = "([^"]+)"/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+}
+
+async function runningBridgeVersion() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/status`, { signal: AbortSignal.timeout(1500) });
+    const info = await res.json();
+    return info && info.version ? String(info.version) : "";
+  } catch {
+    return "";
+  }
+}
+
+async function restartBridge() {
+  try {
+    await fetch(`http://127.0.0.1:${port}/shutdown`, { method: "POST", signal: AbortSignal.timeout(2000) });
+  } catch {}
+  await new Promise((r) => setTimeout(r, 800));
+  started = false;
+  await startBridge();
+}
+
+/**
+ * 桥接源码版本与运行中的版本不一致时自动换桥。
+ * 这样更新 bridge.mjs 后不必重启整个 DSH；旧的 stopOutdatedBridge 只在启动时比常量。
+ */
+async function watchBridgeVersion() {
+  const script = findBridge();
+  if (!script) return;
+  const disk = readDiskBridgeVersion(script);
+  if (!disk) return;
+  const running = await runningBridgeVersion();
+  if (running && running !== disk) {
+    console.log("[dsh-edge-bridge] bridge source", disk, "differs from running", running, "- replacing");
+    await restartBridge();
+  }
+}
 
 async function stopOutdatedBridge() {
   try {
@@ -102,4 +147,9 @@ export function apply(ctx) {
   // Same bundle also gives the side panel a live channel into the desktop
   // Session Controller (same Agent, not a second headless agent).
   startAgentHost(ctx);
+  // 每 20 秒对一次桥接版本：改完 bridge.mjs 后自动热替换，不需要重启 DSH。
+  const timer = setInterval(() => {
+    watchBridgeVersion().catch(() => {});
+  }, 20000);
+  if (timer && typeof timer.unref === "function") timer.unref();
 }
