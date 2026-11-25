@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.7.1 — 2026-11-25
+
+- **修 v1.7.0 的工作区兜底缺陷**：兜底逻辑曾取"最近会话的 cwd"，而旧插件创建的会话本身就在
+  `%USERPROFILE%\.dsh\profiles\desktop`，于是新会话继续落到 profile 目录、客户端仍看不到。
+  现在只认 `storages/workspace.json` 里已注册的 workspace 路径：
+  当前会话 cwd（已注册才用）→ 默认 workspace → 任一已注册 workspace → 空（交宿主默认）。
+  抽成 `bridge/workdir.mjs` 并加单测。
+- **ZCode 告警误报修复**：以前只看 8765 端口是否监听，只要 ZCode 主程序开着就告警；
+  现在改为请求 `http://127.0.0.1:8765/status`，只有 `extension.connected === true`
+  （ZCode 扩展真的连着）才提示，扩展停用后不再误报。
+- 宿主插件 2.4.1、桥接 1.3.4、安装包 1.7.1（扩展 1.4.2 不变）。
+
 ## v1.7.0 — 2026-11-25
 
 - **插件发起的会话现在落在客户端 workspace 里**：以前插件新建会话的 cwd 是 DSH profile 目录
