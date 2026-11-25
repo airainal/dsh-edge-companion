@@ -13,6 +13,9 @@
 - 侧边栏"新建会话"的提示会带上工作区路径；`/sessions` 返回 `cwd` 便于核对。
 - 宿主插件 2.4.0、桥接 1.3.3、安装包 1.7.0（扩展 1.4.2 不变）。
 - 新增 `test/edge-marker.test.cjs`：校验注记结构、幂等、不伪造用户轮次、默认 workspace 存在。
+- 发版脚本护栏：`scripts/finalize-release.cjs` 现在校验 tag 必须指向远端 main 的 HEAD，
+  本地未推送（`local-not-pushed`）或 tag 指向旧提交（`tag-points-elsewhere`）时直接拒绝收尾，
+  避免网络超时导致"release 打的是旧代码"。
 
 ## v1.6.1 — 2026-11-20
 

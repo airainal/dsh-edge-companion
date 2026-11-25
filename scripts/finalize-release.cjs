@@ -14,6 +14,7 @@
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("node:child_process");
 
 const TOKEN = process.env.GH_TOKEN || "";
 const TAG = (process.env.FRC_TAG || "").trim();
@@ -98,15 +99,31 @@ function renderBody(tgzName, zipName) {
   return footer ? changelogSection(VERSION) + "\n\n" + footer : changelogSection(VERSION);
 }
 
+function localHead() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+}
+
 async function ensureTag() {
-  const existing = await api("GET", `/git/ref/tags/${TAG}`);
-  if (existing.status === 200) return { status: "exists", sha: existing.json && existing.json.object && existing.json.object.sha };
-  if (existing.status !== 404) return { status: "lookup failed", http: existing.status };
   const head = await api("GET", `/git/ref/heads/${BRANCH}`);
-  const sha = head.json && head.json.object && head.json.object.sha;
-  if (!sha) return { status: "cannot read branch head", http: head.status };
-  const created = await api("POST", `/git/refs`, { ref: `refs/tags/${TAG}`, sha });
-  return { status: created.status === 201 ? "created" : "create failed", http: created.status, sha, message: created.json && created.json.message };
+  const branchSha = head.json && head.json.object && head.json.object.sha;
+  const existing = await api("GET", `/git/ref/tags/${TAG}`);
+  if (existing.status === 200) {
+    const sha = existing.json && existing.json.object && existing.json.object.sha;
+    // A tag left over from an older commit would publish a build without the
+    // current changes; refuse instead of silently finalizing the wrong tree.
+    if (branchSha && sha && sha !== branchSha) return { status: "tag-points-elsewhere", sha, branchSha };
+    return { status: "exists", sha };
+  }
+  if (existing.status !== 404) return { status: "lookup failed", http: existing.status };
+  if (!branchSha) return { status: "cannot read branch head", http: head.status };
+  const local = localHead();
+  if (local && local !== branchSha) return { status: "local-not-pushed", local, branchSha };
+  const created = await api("POST", `/git/refs`, { ref: `refs/tags/${TAG}`, sha: branchSha });
+  return { status: created.status === 201 ? "created" : "create failed", http: created.status, sha: branchSha, message: created.json && created.json.message };
 }
 
 async function waitForWorkflow() {
@@ -159,7 +176,26 @@ async function uploadAsset(releaseId, file) {
   if (CREATE_TAG) {
     out.tagRef = await ensureTag();
     if (!/^(exists|created)$/.test(String(out.tagRef.status))) {
-      console.log(JSON.stringify({ ...out, error: "cannot create tag" }, null, 2));
+      const hint = out.tagRef.status === "local-not-pushed"
+        ? "push the commits first (git push origin HEAD:main / push.ps1), then rerun"
+        : out.tagRef.status === "tag-points-elsewhere"
+          ? "delete the stale release and tag, then rerun"
+          : "cannot create tag";
+      console.log(JSON.stringify({ ...out, error: "cannot create tag: " + hint }, null, 2));
+      process.exit(1);
+    }
+  }
+
+  {
+    // Independent check: never finalize assets for a tag that is not the branch head.
+    const tagNow = await api("GET", `/git/ref/tags/${TAG}`);
+    const headNow = await api("GET", `/git/ref/heads/${BRANCH}`);
+    const tagSha = tagNow.json && tagNow.json.object && tagNow.json.object.sha;
+    const headSha = headNow.json && headNow.json.object && headNow.json.object.sha;
+    out.tagSha = tagSha;
+    out.branchSha = headSha;
+    if (tagSha && headSha && tagSha !== headSha) {
+      console.log(JSON.stringify({ ...out, error: "tag does not point at branch head; refusing to finalize a stale build" }, null, 2));
       process.exit(1);
     }
   }
