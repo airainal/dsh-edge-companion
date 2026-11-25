@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.7.2 — 2026-11-25
+
+- **修 headless 误续接桌面会话**：DSH 客户端断开时，桥接会用 one-shot headless runner 去续接当前会话，
+  而带 agent preset 的会话（如 `cordis`）无法被 one-shot 组合，于是报
+  `runs under agent preset "cordis", which the one-shot runner does not compose`。
+  现在检测到会话有 agent preset 时**不再 headless 续接**，指令留在队列并提示
+  "DSH 客户端未连接…指令已排队"，客户端连上后由 `flushPendingToHost()` 自动补发。
+- 门禁逻辑抽到 `bridge/resume-gate.mjs`，`test/resume-gate.test.cjs` 覆盖 cordis/standard/无 preset。
+- 宿主插件 2.4.2、桥接 1.3.5、安装包 1.7.2（扩展 1.4.2 不变）。
+
 ## v1.7.1 — 2026-11-25
 
 - **修 v1.7.0 的工作区兜底缺陷**：兜底逻辑曾取"最近会话的 cwd"，而旧插件创建的会话本身就在

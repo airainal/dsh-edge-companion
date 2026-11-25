@@ -19,6 +19,7 @@ import zlib from "node:zlib";
 import { spawn, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolveWorkdir } from "./workdir.mjs";
+import { headlessResumeBlocker } from "./resume-gate.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -30,7 +31,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.3.4";
+const VERSION = "1.3.5";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 
@@ -355,6 +356,30 @@ function syncUiAvailability() {
   }).catch(() => {});
 }
 
+let flushingPending = false;
+/** DSH 客户端连上后，把离线期间排队的指令补发给当前会话。 */
+async function flushPendingToHost() {
+  if (flushingPending || !hostReady()) return;
+  if (!session.pending.length) return;
+  const sid = active.sessionId;
+  if (!sid) return; // 没有活动会话时不自动新建，避免意外切换
+  flushingPending = true;
+  const items = session.pending.splice(0, session.pending.length);
+  const text = items.map((i) => i.text).filter(Boolean).join("\n\n").trim();
+  try {
+    if (text) {
+      appendEvent("system", { text: `⚡ DSH 客户端已连接，自动补发 ${items.length} 条排队指令` });
+      await hostCall("hostPrompt", { sessionId: sid, text });
+      log("flushed pending instructions to host:", items.length);
+    }
+  } catch (e) {
+    session.pending.unshift(...items);
+    appendEvent("system", { text: "⚠ 补发排队指令失败：" + String((e && e.message) || e).slice(0, 300) });
+  } finally {
+    flushingPending = false;
+  }
+}
+
 /** 插件新建会话必须落在客户端已注册的 workspace（workspace.json）里。 */
 function sessionWorkdir(sid) {
   return resolveWorkdir({ dshHome: DSH_HOME, sessions: hostSessionsCache, sessionId: sid });
@@ -391,6 +416,7 @@ function adoptHost(session, msg) {
       log("desktop agent host ready, version =", session.hello.version || "?");
       broadcastStatus();
       syncUiAvailability();
+      flushPendingToHost().catch(() => {});
       if (active.sessionId) {
         hostCall("hostFollow", { sessionId: active.sessionId })
           .then(() => refreshHostModels())
@@ -1401,6 +1427,33 @@ async function runEngine(instructions, reason) {
     return;
   }
 
+  // 续接当前选中的真实会话；文件没了就清空，避免 --session-id 报错。
+  // 带 agent preset 的会话（cordis 等）无法被 one-shot runner 组合，只能由桌面客户端续接：
+  // 这时不 spawn，把指令放回队列，等 DSH 连上后由 flushPendingToHost() 自动补发。
+  let resumeId = active.sessionId;
+  if (resumeId) {
+    const file = findSessionFile(resumeId);
+    if (!file) {
+      log("resume session file gone, starting a new session:", resumeId);
+      active.sessionId = null;
+      active.path = null;
+      saveActive();
+      resumeId = null;
+    } else {
+      let header = null;
+      try { header = readSessionHeader(file); } catch {}
+      const blocker = headlessResumeBlocker(header);
+      if (blocker) {
+        session.pending.unshift(...instructions);
+        appendEvent("system", {
+          text: `⚠ DSH 客户端未连接：${blocker}。指令已排队（${instructions.length} 条），DSH 连上后会自动发送。`,
+        });
+        log("headless resume blocked:", blocker);
+        return;
+      }
+    }
+  }
+
   worker.running = true;
   worker.startedAt = Date.now();
   worker.killing = false;
@@ -1412,15 +1465,6 @@ async function runEngine(instructions, reason) {
   mirrorState.located = false;
   mirrorState.sawAssistant = false;
 
-  // 续接当前选中的真实会话；文件没了就清空，避免 --session-id 报错
-  let resumeId = active.sessionId;
-  if (resumeId && !findSessionFile(resumeId)) {
-    log("resume session file gone, starting a new session:", resumeId);
-    active.sessionId = null;
-    active.path = null;
-    saveActive();
-    resumeId = null;
-  }
   const resuming = !!resumeId;
   if (resuming) primeActive();
   const modelLabel = `${d.provider}/${d.model}`;
