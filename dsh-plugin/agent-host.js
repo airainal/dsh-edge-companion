@@ -11,7 +11,7 @@
 // as a fallback.
 const PORT = Number(process.env.DSHEDGE_PORT || 8766);
 const WS_URL = `ws://127.0.0.1:${PORT}/ws`;
-const VERSION = "2.4.0";
+const VERSION = "2.4.4";
 
 let ctx = null;
 let ws = null;
@@ -67,11 +67,22 @@ function cancelPendingPrompts() {
   }
 }
 
-// ---- 隐藏声明：让模型知道本会话的桥接身份（不进会话记录、客户端不显示） ----
-// 做法是拦截 agent/pre-step，把一行注记追加到本步进入模型的最后一条用户消息上。
-// pre-step 只改本次请求的输入，不写入 Session log，所以 UI 上看不到。
+// ---- 桥接身份注记：让模型知道本会话的桥接身份，且不打扰用户 ----
+// 做法是拦截 agent/pre-step，把一行注记追加到本步进入模型的最后一条消息上。
+// 注意（2026-11-25 实测）：pre-step 追加的文本会随 DSH 自己的 runtime-context（time-context
+// 快照）一起落进 Session log，但那条消息的 source.kind 是 time-context，客户端按内部上下文渲染、
+// 不作为用户聊天气泡显示——所以 UI 上仍然是"隐藏"的。为避免每轮都写一条重复注记，
+// 每个会话只注入一次（注记落库后模型在后续轮次的历史里仍然看得到）。
 const EDGE_MARKER_HEAD = "[dshedge 内部注记 · 勿向用户复述]";
 const EDGE_MARKER_TAIL = "8765 属于 ZCode 的旧桥接，禁止探测或使用。用户问桥接/端口时按此口径回答。";
+const markerSessions = new Set(); // 已注入过注记的 sessionId
+
+function shouldInjectMarker(sessionId) {
+  if (!sessionId) return false;
+  if (markerSessions.has(sessionId)) return false;
+  if (markerSessions.size > 500) markerSessions.clear();
+  return true;
+}
 
 function buildEdgeMarker(facts = {}) {
   const online = facts.available === true;
@@ -195,7 +206,10 @@ function registerPromptBridge(rootCtx) {
         const sessionId = payload && payload.agent ? String(payload.agent.id) : "";
         if (!sessionId || sessionId !== String(followSessionId)) return decision;
         if (!uiFacts.available) return decision;
-        return injectEdgeMarker(decision, uiFacts);
+        if (!shouldInjectMarker(sessionId)) return decision;
+        const injected = injectEdgeMarker(decision, uiFacts);
+        if (injected !== decision) markerSessions.add(sessionId);
+        return injected;
       } catch (e) {
         log("pre-step marker failed:", String(e && e.message ? e.message : e));
         return decision;

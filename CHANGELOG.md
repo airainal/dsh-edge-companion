@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.7.4 — 2026-11-25
+
+- **修一次真实崩溃/失效的根因**：用 PowerShell `Set-Content -Encoding UTF8` 改版本号时，给
+  `package.json` 写进了 BOM。DSH 的 bundle 加载器 `JSON.parse` 直接失败，把插件标成
+  `availability: missing` 静默丢弃 —— 于是宿主永远连不上、只剩旧的 1.3.3 桥在跑，
+  所以前面几版的修复"看起来完全没生效"。现已去掉 BOM，并通过把 bundle 关→开重新加载成功：
+  当前 `GET /status` 为 *bridge 1.3.6 / host connected / warnings.zcodeBridge=false*。
+- 新增 `scripts/check-encoding.cjs`（扫描 BOM，发现即失败）与 `scripts/bump-version.cjs`
+  （改版本号且绝不写 BOM），以后改版本号一律用后者。
+- **注记改为每会话一次**：实测 `agent/pre-step` 追加的文本会随 DSH 的 `time-context` 快照落进
+  Session log（`source.kind=time-context`，客户端按内部上下文渲染、不当用户气泡显示）。
+  为避免每轮重复写日志，现在每个会话只注入一次；注记落库后模型后续轮次仍可见。
+- 宿主握手版本对齐 2.4.4。
+- 验证（真实运行）：新会话 `session-79a711f0` 的 cwd 已是
+  `C:\Users\a\Documents\deepseek-harness\default-workspace`；带 1×1 PNG 的指令送达模型
+  （`user/message` 内含 `image/png 1×1, 70B, selftest.png`）。
+
 ## v1.7.3 — 2026-11-25
 
 - **图片也能排队**：DSH 客户端未连接时发送带图片的指令，以前直接报"图片无法发送（无头引擎不支持图片）"；
