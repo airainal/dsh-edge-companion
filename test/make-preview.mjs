@@ -40,9 +40,10 @@ const sessions = [
   { id: "session-9e0a86f5-d438-4ea9-a38c-3153018c34fb", title: "在拼题A 上作答并逐题验证", updatedAt: now - 7200e3, current: false },
   { id: "session-bf88e471-1040-42c5-9b60-76ceec8b7640", title: "调研 CDP 截图被遮挡问题", updatedAt: now - 86400e3, current: false },
 ];
+const reasoning = { defaultEffort: "high", efforts: [{ id: "off", name: "Off" }, { id: "low", name: "Low" }, { id: "high", name: "High" }, { id: "max", name: "Max" }] };
 const models = [
-  { id: "deepseek-flash", label: "DeepSeek-V4.1-Flash" },
-  { id: "deepseek-v4-pro", label: "DeepSeek-V4-Pro" },
+  { id: "deepseek-flash", label: "DeepSeek-V4.1-Flash", provider: "deepseek-account", providerName: "DeepSeek Account", reasoning },
+  { id: "deepseek-v4-pro", label: "DeepSeek-V4-Pro", provider: "deepseek-account", providerName: "DeepSeek Account", reasoning },
 ];
 const tabs = [
   { tabId: 1967531527, index: 0, active: false, title: "Example Domain", url: "https://example.com/" },

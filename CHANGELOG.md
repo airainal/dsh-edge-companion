@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.7.5 — 2026-11-25
+
+- **修模型/推理等级不同步**：客户端把等级切到 `Max` 再切回 `High` 后，侧边栏一直停在 `Max`。
+  根因是宿主只从 follow 的 `snapshot` 帧读 `modelSelection`，而客户端的等级变更是
+  `model/selection` **事件**，从未被跟踪；桥接因此一直广播旧值。
+  现在宿主监听该事件并 `updateModelState()`，桥接广播 `engine.modelCurrent`，
+  侧边栏收到后立刻刷新选择器标签（客户端 High ↔ 插件 High 实时一致）。
+- 新增回归测试 `verify-model-sync.cjs` 思路（预览页注入 engine 帧，校验 High→Max→High）；
+  预览 fixture 补全 `reasoning.efforts`，避免标签查不到名字。
+- **新增 `scripts/update-extension-refs.cjs`**：改 manifest 版本与 `sidepanel-x.y.z` 引用一律用它。
+  原因：PowerShell 5.1 的 `Get-Content -Raw` 按 ANSI 解码 UTF-8，会把 manifest/HTML 里的中文写坏
+  （本次实际踩到并已用 git 恢复）——和之前的 BOM 事故一样，禁止用 PS 改写这些文件。
+- 扩展 1.4.3（`sidepanel-1.4.3.js/.css`，需重新加载扩展）、宿主插件 2.4.5、安装包 1.7.5
+  （桥接 1.3.6 不变）。
+
 ## v1.7.4 — 2026-11-25
 
 - **修一次真实崩溃/失效的根因**：用 PowerShell `Set-Content -Encoding UTF8` 改版本号时，给

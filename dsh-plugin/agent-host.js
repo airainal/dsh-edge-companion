@@ -11,7 +11,7 @@
 // as a fallback.
 const PORT = Number(process.env.DSHEDGE_PORT || 8766);
 const WS_URL = `ws://127.0.0.1:${PORT}/ws`;
-const VERSION = "2.4.4";
+const VERSION = "2.4.5";
 
 let ctx = null;
 let ws = null;
@@ -588,6 +588,11 @@ async function follow(sessionId, force = false) {
           updateModelState(frame.projections.values.modelSelection);
         }
         const event = frame && frame.type === "event" ? frame.event : null;
+        // 客户端切换模型/推理等级会写入 model/selection 事件；只跟 snapshot 会导致
+        // 侧边栏一直显示旧等级（例如客户端已 High，插件仍停在 Max）。
+        if (event && event.type === "model/selection") {
+          updateModelState(event.data);
+        }
         if (event && event.type === "turn/start") {
           running = true;
           send("hostStatus", { sessionId, running: true });

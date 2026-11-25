@@ -144,6 +144,11 @@ function renderEngine(e) {
   const el = $("engine");
   if (!e) { el.classList.add("hidden"); return; }
   const host = e.host || {};
+  // 客户端里切换模型/推理等级时，桥接会广播 engine（modelCurrent）。
+  // 这里同步刷新选择器，避免侧边栏显示旧等级（如客户端 High、插件仍显示 Max）。
+  if (host.connected && e.modelCurrent && e.modelCurrent.model && Array.isArray(models) && models.length) {
+    renderModels({ models, current: e.modelCurrent });
+  }
   if (host.connected) {
     el.textContent = host.codex ? "DSH · Codex" : "DSH";
     el.title = "侧边栏直接驱动 DSH 客户端里的同一会话，实时同步对话、思考与停止状态";
