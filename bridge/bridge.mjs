@@ -30,7 +30,7 @@ const argOf = (p) => {
 };
 const PORT = Number(argOf("--port=") || process.env.DSHEDGE_PORT || 8766);
 const TOKEN = argOf("--token=") || process.env.DSHEDGE_TOKEN || "";
-const VERSION = "1.3.2";
+const VERSION = "1.3.3";
 const HOST = "127.0.0.1";
 const START_AT = Date.now();
 
@@ -342,7 +342,35 @@ function hostReady() {
 function syncUiAvailability() {
   if (!hostReady()) return;
   const available = !!(ext && !ext.conn.closed && ext.authenticated);
-  hostCall("hostUi", { available }).catch(() => {});
+  hostCall("hostUi", {
+    available,
+    extVersion: available ? String(ext.hello?.extVersion || "") : "",
+    zcodeBridge: zcodeBridgeActive(),
+  }).catch(() => {});
+}
+
+/**
+ * 插件新建会话要落在客户端已注册的 workspace 里，否则客户端会话列表看不到它。
+ * 优先取当前会话的 cwd，其次默认 workspace 的 path，最后交给宿主默认目录。
+ */
+function sessionWorkdir(sid) {
+  const id = String(sid || "");
+  if (id) {
+    const row = hostSessionsCache.find((s) => String(s.sessionId || "") === id);
+    if (row && row.cwd) return String(row.cwd);
+  }
+  const withCwd = hostSessionsCache
+    .filter((s) => s && s.cwd)
+    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+  if (withCwd.length) return String(withCwd[0].cwd);
+  try {
+    const raw = fs.readFileSync(path.join(DSH_HOME, "storages", "workspace.json"), "utf8");
+    const state = JSON.parse(raw);
+    const defaultId = state?.global?.defaultWorkspaceId;
+    const pathOfDefault = defaultId ? state?.tables?.workspaces?.[defaultId]?.path : "";
+    if (pathOfDefault) return String(pathOfDefault);
+  } catch {}
+  return "";
 }
 
 function adoptHost(session, msg) {
@@ -941,7 +969,7 @@ async function sessionSay(text, images) {
     try {
       let sid = active.sessionId;
       if (!sid) {
-        const created = await hostCall("hostCreate", {});
+        const created = await hostCall("hostCreate", { cwd: sessionWorkdir("") });
         sid = String(created.sessionId || "");
         if (sid) setActiveSession(sid);
       }
@@ -2184,6 +2212,7 @@ function mergedSessions(refresh = false) {
     if (existing) {
       existing.running = running;
       existing.agentAvailable = h.agentAvailable === true;
+      if (h.cwd) existing.cwd = String(h.cwd);
       if (active.sessionId === id) existing.current = true;
       continue;
     }
@@ -2196,6 +2225,7 @@ function mergedSessions(refresh = false) {
       current: active.sessionId === id,
       running,
       agentAvailable: h.agentAvailable === true,
+      cwd: h.cwd ? String(h.cwd) : "",
     });
   }
   return [...byId.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -2247,11 +2277,16 @@ async function selectSession(id) {
 async function newActiveSession() {
   if (hostReady()) {
     try {
-      const created = await hostCall("hostCreate", {});
+      const cwd = sessionWorkdir(active.sessionId);
+      const created = await hostCall("hostCreate", cwd ? { cwd } : {});
       const id = String(created.sessionId || "");
       resetEventStream();
       setActiveSession(id);
-      appendEvent("system", { text: "已在 DSH 客户端新建会话（客户端立即可见）" });
+      appendEvent("system", {
+        text: cwd
+          ? `已在 DSH 客户端新建会话（工作区 ${cwd}，客户端会话列表可见，点开即可继续）`
+          : "已在 DSH 客户端新建会话（客户端立即可见）",
+      });
       if (id) await hostCall("hostFollow", { sessionId: id });
       await refreshHostModels();
       broadcastEngine();
